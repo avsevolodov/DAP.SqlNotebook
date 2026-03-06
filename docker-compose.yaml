@@ -1,0 +1,78 @@
+services:
+  # Ollama: you may see "failed to parse CPU allowed micro secs" parsing "max" — harmless when cgroup reports unlimited CPU.
+  ollama:
+    image: docker.io/ollama/ollama:latest
+    ports:
+      - 7869:11434
+    volumes:
+      - .:/code
+      - ./.ollama/ollama:/root/.ollama
+    container_name: ollama
+    pull_policy: always
+    tty: true
+    restart: always
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_HOST=0.0.0.0
+    networks:
+      - ollama-docker
+
+  ollama-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: ollama-webui
+    volumes:
+      - ./ollama/ollama-webui:/app/backend/data
+    depends_on:
+      - ollama
+    ports:
+      - 8080:8080
+    environment: # https://docs.openwebui.com/getting-started/env-configuration#default_models
+      - LLM_API_URLS=http://172.17.112.1:7869 #comma separated ollama hosts
+      - ENV=dev
+      - WEBUI_AUTH=False
+      - WEBUI_NAME=valiantlynx AI
+      - WEBUI_URL=http://localhost:8080
+      - WEBUI_SECRET_KEY=t0p-s3cr3t
+      - NO_PROXY=host.docker.internal 
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    restart: unless-stopped
+    networks:
+      - ollama-docker
+
+  ai-sql-service:
+    build:
+      context: ./ai-sql-service
+      dockerfile: Dockerfile
+    container_name: ai-sql-service
+    depends_on:
+      - ollama
+    ports:
+      - 8000:8000
+    environment:
+      - LLM_API_URL=http://ollama:11434/v1
+      - LLM_API_KEY=ollama
+      # SQL generator: LLM_GENERATE_SQL_MODEL or LLM_MODEL (default tinyllama; for better SQL use llama3.2 or phi)
+      - LLM_MODEL=tinyllama
+      # Autocomplete: own model (default tinyllama)
+      - LLM_AUTOCOMPLETE_MODEL=tinyllama
+      - LLM_FIND_TABLES_MODEL=tinyllama
+      # Backend must be running on host and listening on 0.0.0.0:5175 (see hint below)
+      - SCHEMA_API_URL=http://172.17.112.1:5175/api/v1/schema
+      # Wait for Ollama to accept connections; retry RAG index build on failure (defaults: 5s delay, 5 retries × 10s)
+      - RAG_STARTUP_DELAY_SEC=5
+      - RAG_BUILD_RETRIES=5
+      - RAG_BUILD_RETRY_DELAY_SEC=10
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    restart: unless-stopped
+    networks:
+      - ollama-docker
+    # Hint: if schema fetch fails with "Connection refused", run the C# backend on the host with:
+    #   cd SqlNotebook.Service && dotnet run --urls http://0.0.0.0:5175
+    # or set ASPNETCORE_URLS=http://0.0.0.0:5175 so Docker can reach it via host.docker.internal:5175
+
+networks:
+  ollama-docker:
+    external: false
+  

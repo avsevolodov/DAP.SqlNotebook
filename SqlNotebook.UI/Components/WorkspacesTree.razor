@@ -1,0 +1,116 @@
+@using System.Collections.Generic
+@using System.Linq
+@using System.Threading
+@using DAP.SqlNotebook.Contract.Entities
+@using DAP.SqlNotebook.Service.Client.V1
+@using DAP.SqlNotebook.UI.Helpers
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+
+<div class="workspaces-tree pa-2">
+    @if (_loading && _workspaces.Count == 0)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Style="height: 2px;" />
+    }
+    @foreach (var ws in _workspaces)
+    {
+        var expanded = _expandedWorkspaces.Contains(ws.Id);
+        <div class="workspaces-tree-node">
+            <div class="workspaces-tree-row"
+                 style="padding-left: 4px;"
+                 @onclick="@(() => ToggleWorkspace(ws.Id))">
+                <span class="material-icons workspaces-tree-icon" aria-hidden="true">@(expanded ? "expand_more" : "chevron_right")</span>
+                <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-primary);" aria-hidden="true">folder</span>
+                <a href="@GetNotebooksRoute(ws.Id)" class="workspaces-tree-name" @onclick:stopPropagation="true">@(ws.Name ?? "Workspace")</a>
+            </div>
+            @if (expanded)
+            {
+                @if (_loadingNotebooks == ws.Id)
+                {
+                    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Style="height: 2px; margin-left: 28px;" />
+                }
+                else
+                {
+                    var notebooks = _notebooksByWorkspace.TryGetValue(ws.Id, out var list) ? list : null;
+                    @if (notebooks != null)
+                    {
+                        @foreach (var nb in notebooks)
+                        {
+                            <div class="workspaces-tree-row workspaces-tree-notebook"
+                                 style="padding-left: 28px; min-height: 28px;">
+                                <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-secondary); font-size: 20px;" aria-hidden="true">menu_book</span>
+                                <a href="@MainRoutes.GetNotebookRoute(nb.Id)" class="workspaces-tree-name" title="@nb.Name">@nb.Name</a>
+                            </div>
+                        }
+                        @if (notebooks.Count == 0)
+                        {
+                            <div class="workspaces-tree-row" style="padding-left: 28px; color: var(--mud-palette-text-secondary); font-size: 0.875rem;">No notebooks</div>
+                        }
+                    }
+                }
+            }
+        </div>
+    }
+    @if (!_loading && _workspaces.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary">No workspaces. Create one from Workspaces page.</MudText>
+    }
+</div>
+
+@code {
+    [Inject] private IWorkspaceManager WorkspaceManager { get; set; } = null!;
+    [Inject] private INotebookManager NotebookManager { get; set; } = null!;
+
+    private List<WorkspaceInfo> _workspaces = new();
+    private readonly HashSet<Guid> _expandedWorkspaces = new();
+    private readonly Dictionary<Guid, List<NotebookMetaInfo>> _notebooksByWorkspace = new();
+    private Guid? _loadingNotebooks;
+    private bool _loading = true;
+
+    private string GetNotebooksRoute(Guid workspaceId) => $"/notebooks?workspaceId={workspaceId:N}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadWorkspaces();
+    }
+
+    private async Task LoadWorkspaces()
+    {
+        _loading = true;
+        try
+        {
+            var list = await WorkspaceManager.GetWorkspaces(CancellationToken.None);
+            _workspaces = list?.ToList() ?? new List<WorkspaceInfo>();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ToggleWorkspace(Guid workspaceId)
+    {
+        if (_expandedWorkspaces.Contains(workspaceId))
+        {
+            _expandedWorkspaces.Remove(workspaceId);
+            StateHasChanged();
+            return;
+        }
+        _expandedWorkspaces.Add(workspaceId);
+        if (!_notebooksByWorkspace.ContainsKey(workspaceId))
+        {
+            _loadingNotebooks = workspaceId;
+            StateHasChanged();
+            try
+            {
+                var response = await NotebookManager.GetNotebooks(CancellationToken.None, queryFilter: null, offset: 0, batchSize: 500, workspaceId: workspaceId);
+                _notebooksByWorkspace[workspaceId] = response.Notebooks?.ToList() ?? new List<NotebookMetaInfo>();
+            }
+            finally
+            {
+                _loadingNotebooks = null;
+            }
+        }
+        StateHasChanged();
+    }
+}

@@ -1,0 +1,563 @@
+@page "/notebooks/new"
+@page "/notebooks/{Id:guid}"
+@namespace DAP.SqlNotebook.UI.Pages
+@using System.Collections.Generic
+@using System.Linq
+@using System.Net.Http.Json
+@using System.Threading
+@using DAP.SqlNotebook.Contract.Entities
+@using DAP.SqlNotebook.Service.Client.V1
+@using DAP.SqlNotebook.UI.Components
+@using DAP.SqlNotebook.UI.Helpers
+@using MudBlazor
+
+@using Microsoft.JSInterop
+@implements IDisposable
+
+<PageTitle>@(IsNew ? "New notebook" : _notebook?.Name ?? "Notebook")</PageTitle>
+
+<MudPaper Class="pa-4">
+    @if (_loading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+    }
+
+    @if (!_loading && (IsNew || _notebook != null))
+    {
+        <MudStack Spacing="3">
+            @if (IsNew)
+            {
+                <NotebookNew @bind-Name="NewNotebookName"
+                             Databases="_databaseNodes"
+                             @bind-SelectedDatabase="_newNotebookDatabase"
+                             OnCreate="CreateNotebook" />
+            }
+            else
+            {
+                @if (_selectedDatabase != null)
+                {
+                    <MudPaper Class="pa-3 mb-3" Elevation="0" Outlined="true">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.subtitle2">БД: @(_selectedDatabase.DatabaseName ?? _selectedDatabase.Name ?? "—")</MudText>
+                            @if (!string.IsNullOrWhiteSpace(_notebookDatabaseDescription))
+                            {
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">@_notebookDatabaseDescription</MudText>
+                            }
+                        </MudStack>
+                    </MudPaper>
+                }
+                <NotebookEdit Notebook="_notebook!"
+                              NotebookId="@Id"
+                              SelectedDatabase="_selectedDatabase"
+                              SqlEditorContent="@_sqlEditorContent"
+                              SqlEditorContentChanged="OnEditorContentChanged"
+                              CurrentRunResult="_currentRunResult"
+                              QueryTimeoutSeconds="_queryTimeoutSeconds"
+                              OnQueryTimeoutChanged="OnQueryTimeoutChanged"
+                              SelectTopCount="_selectTopCount"
+                              OnSelectTopCountChanged="OnSelectTopCountChanged"
+                              IsQueryRunning="_queryRunning"
+                              OnCancelRun="CancelRun"
+                              OnRun="RunQuery"
+                              OnRunSqlFromMarkdown="RunQueryFromSql"
+                              OnRunAsChart="RunQueryAsChart"
+                              OnAddNewCell="AddCurrentAsCell"
+                              OnAddMarkdown="AddMarkdownCell"
+                              OnInsertIntoEditor="InsertIntoEditor"
+                              ExecutionError="@_executionError"
+                              ExecutionErrorChanged="OnExecutionErrorChanged"
+                              OnChartTypeChanged="OnCellChartTypeChanged"
+                              OnFormatCell="OnCellFormat"
+                              OnDeleteCell="HandleDeleteCell"
+                              OnCellUpdated="SaveNotebookAfterCellUpdate" />
+            }
+        </MudStack>
+    }
+
+    @if (!_loading && !IsNew && _notebook == null && _loadAttempted)
+    {
+        <MudAlert Severity="Severity.Warning">Notebook not found.</MudAlert>
+        <MudLink Href="@MainRoutes.Notebooks">Back to list</MudLink>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [SupplyParameterFromQuery(Name = "workspaceId")] public Guid? WorkspaceId { get; set; }
+
+    [Inject] private INotebookManager NotebookManager { get; set; } = null!;
+    [Inject] private HttpClient Http { get; set; } = null!;
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+    [Inject] private DAP.SqlNotebook.UI.ICurrentNotebookContext CurrentNotebookContext { get; set; } = null!;
+    [Inject] private ICurrentSqlContext CurrentSqlContext { get; set; } = null!;
+    [Inject] private IAiAssistInsertService AiAssistInsertService { get; set; } = null!;
+    [Inject] private ICatalogInsertService CatalogInsertService { get; set; } = null!;
+    [Inject] private ICurrentDatabaseContext CurrentDatabaseContext { get; set; } = null!;
+
+    private bool IsNew => Id == Guid.Empty;
+    private bool _loading = true;
+    private bool _loadAttempted;
+    private Guid _loadedId; // track which Id we loaded so we reload when route changes
+    private NotebookInfo? _notebook;
+    private string? _sqlEditorContent;
+    private string? _executionError;
+    private NotebookCellExecutionResultInfo? _currentRunResult;
+    private int? _queryTimeoutSeconds = 30;
+    private int _selectTopCount = 10;
+    private string NewNotebookName { get; set; } = "";
+    private CatalogNodeInfo? _newNotebookDatabase;
+    private bool _queryRunning;
+    private CancellationTokenSource? _runCts;
+    private List<CatalogNodeInfo> _databaseNodes = new();
+    private CatalogNodeInfo? _selectedDatabase;
+    private string? _notebookDatabaseDescription;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadIfNeededAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadIfNeededAsync();
+    }
+
+    private async Task LoadIfNeededAsync()
+    {
+        if (IsNew)
+        {
+            CurrentNotebookContext.NotebookId = null;
+            _notebook = null;
+            _loadAttempted = true;
+            _loading = false;
+            _databaseNodes = await LoadDatabasesAsync();
+            return;
+        }
+        if (Id == _loadedId && _notebook != null)
+            return;
+        _loadedId = Id;
+        _loading = true;
+        _loadAttempted = false;
+        _notebook = null;
+        try
+        {
+            _notebook = await NotebookManager.GetNotebook(Id, CancellationToken.None);
+        }
+        finally
+        {
+            _loadAttempted = true;
+            _loading = false;
+        }
+        if (_notebook != null)
+        {
+            CurrentNotebookContext.NotebookId = Id;
+            _databaseNodes = await LoadDatabasesAsync();
+            _selectedDatabase = _notebook.CatalogNodeId != null
+                ? _databaseNodes.FirstOrDefault(d => d.Id == _notebook.CatalogNodeId)
+                : null;
+            CurrentDatabaseContext.SelectedDatabase = _selectedDatabase;
+            _notebookDatabaseDescription = null;
+            if (_selectedDatabase != null && _selectedDatabase.Id != default)
+            {
+                try
+                {
+                    var node = await Http.GetFromJsonAsync<CatalogNodeInfo>($"api/v1/catalog/nodes/{_selectedDatabase.Id:N}", CancellationToken.None);
+                    _notebookDatabaseDescription = node?.Description;
+                }
+                catch { /* ignore */ }
+            }
+            AiAssistInsertService.SetInsertCallback(sql =>
+            {
+                _sqlEditorContent = sql;
+                _ = InvokeAsync(StateHasChanged);
+            });
+            CatalogInsertService.SetInsertNameCallback(InsertTableNameIntoEditor);
+            CatalogInsertService.SetInsertSelectCallback(InsertSelectIntoEditor);
+            CatalogInsertService.SetInsertDescriptionCallback(InsertDescriptionIntoNotebook);
+            CatalogInsertService.SelectTopCount = _selectTopCount;
+            CatalogInsertService.SetOnContentPasted(t =>
+            {
+                _sqlEditorContent = t;
+                CurrentSqlContext.CurrentSql = t;
+            });
+        }
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+    }
+
+    public void Dispose()
+    {
+        _runCts?.Cancel();
+        _runCts?.Dispose();
+        _runCts = null;
+        CurrentNotebookContext.NotebookId = null;
+        AiAssistInsertService.SetInsertCallback(null);
+        CatalogInsertService.SetInsertNameCallback(null);
+        CatalogInsertService.SetInsertSelectCallback(null);
+        CatalogInsertService.SetInsertDescriptionCallback(null);
+        CatalogInsertService.SetOnContentPasted(null);
+        CurrentSqlContext.CurrentSql = null;
+    }
+
+    private async Task CreateNotebook(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        var created = await NotebookManager.CreateNotebook(new NotebookInfo
+        {
+            Id = Guid.NewGuid(),
+            Name = name.Trim(),
+            Cells = new List<NotebookCellInfo>(),
+            WorkspaceId = WorkspaceId,
+            CatalogNodeId = _newNotebookDatabase?.Id,
+            CatalogNodeDisplayName = _newNotebookDatabase?.DatabaseName ?? _newNotebookDatabase?.Name,
+        }, CancellationToken.None);
+        Navigation.NavigateTo(MainRoutes.GetNotebookRoute(created.Id));
+    }
+
+    private Task OnQueryTimeoutChanged(int? value)
+    {
+        _queryTimeoutSeconds = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnSelectTopCountChanged(int value)
+    {
+        _selectTopCount = Math.Clamp(value, 1, 10000);
+        CatalogInsertService.SelectTopCount = _selectTopCount;
+        return Task.CompletedTask;
+    }
+
+    private async Task<List<CatalogNodeInfo>> LoadDatabasesAsync()
+    {
+        try
+        {
+            var list = await Http.GetFromJsonAsync<List<CatalogNodeInfo>>("api/v1/catalog/databases", CancellationToken.None);
+            return list ?? new List<CatalogNodeInfo>();
+        }
+        catch
+        {
+            return new List<CatalogNodeInfo>();
+        }
+    }
+
+    private Task OnEditorContentChanged(string? value)
+    {
+        _sqlEditorContent = value;
+        CurrentSqlContext.CurrentSql = value;
+        return Task.CompletedTask;
+    }
+    private Task OnExecutionErrorChanged(string? value) { _executionError = value; return Task.CompletedTask; }
+
+    private void CancelRun()
+    {
+        _runCts?.Cancel();
+    }
+
+    private async Task RunQuery()
+    {
+        var canRunWithEmpty = _selectedDatabase?.Type == "Topic"; // Kafka topic: backend returns latest messages
+        if (_notebook == null || _queryRunning) return;
+        if (!canRunWithEmpty && string.IsNullOrWhiteSpace(_sqlEditorContent)) return;
+        _executionError = null;
+        _currentRunResult = null;
+        _runCts?.Dispose();
+        _runCts = new CancellationTokenSource();
+        _queryRunning = true;
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+            var timeout = _queryTimeoutSeconds ?? 30;
+            var sql = (_sqlEditorContent ?? "").Trim();
+            var result = await NotebookManager.ExecuteQuery(Id, sql, _runCts.Token, timeout, _selectedDatabase?.Id);
+            if (result.Status == NotebookCellExecutionStatusInfo.Failed)
+            {
+                _executionError = result.Error ?? "Execution failed.";
+                return;
+            }
+            _currentRunResult = result;
+        }
+        catch (OperationCanceledException)
+        {
+            _executionError = "Cancelled.";
+        }
+        catch (Exception ex)
+        {
+            _executionError = ex.Message;
+        }
+        finally
+        {
+            _queryRunning = false;
+            _runCts?.Dispose();
+            _runCts = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RunQueryFromSql(string sql)
+    {
+        var canRunWithEmpty = _selectedDatabase?.Type == "Topic";
+        if (_notebook == null || _queryRunning) return;
+        if (!canRunWithEmpty && string.IsNullOrWhiteSpace(sql)) return;
+        _executionError = null;
+        _runCts?.Dispose();
+        _runCts = new CancellationTokenSource();
+        _queryRunning = true;
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+            var timeout = _queryTimeoutSeconds ?? 30;
+            var sqlTrimmed = (sql ?? "").Trim();
+            var result = await NotebookManager.ExecuteQuery(Id, sqlTrimmed, _runCts.Token, timeout, _selectedDatabase?.Id);
+            if (result.Status == NotebookCellExecutionStatusInfo.Failed)
+            {
+                _executionError = result.Error ?? "Execution failed.";
+                return;
+            }
+            var newCell = new NotebookCellInfo
+            {
+                Id = 0,
+                Type = NotebookCellTypeInfo.Sql,
+                Content = sqlTrimmed,
+                ExecutionResult = result,
+                CatalogNodeId = _selectedDatabase?.Id,
+                DatabaseDisplayName = _selectedDatabase?.DatabaseName ?? _selectedDatabase?.Name,
+            };
+            _notebook.Cells ??= new List<NotebookCellInfo>();
+            _notebook.Cells.Add(newCell);
+            var updated = await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
+            MergeCellIdsFromResponse(updated);
+        }
+        catch (OperationCanceledException)
+        {
+            _executionError = "Cancelled.";
+        }
+        catch (Exception ex)
+        {
+            _executionError = ex.Message;
+        }
+        finally
+        {
+            _queryRunning = false;
+            _runCts?.Dispose();
+            _runCts = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RunQueryAsChart()
+    {
+        if (_notebook == null || string.IsNullOrWhiteSpace(_sqlEditorContent) || _queryRunning) return;
+        _executionError = null;
+        _currentRunResult = null;
+        _runCts?.Dispose();
+        _runCts = new CancellationTokenSource();
+        _queryRunning = true;
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+            var timeout = _queryTimeoutSeconds ?? 30;
+            var result = await NotebookManager.ExecuteQuery(Id, _sqlEditorContent!.Trim(), _runCts.Token, timeout, _selectedDatabase?.Id);
+            if (result.Status == NotebookCellExecutionStatusInfo.Failed)
+            {
+                _executionError = result.Error ?? "Execution failed.";
+                return;
+            }
+            var columns = result.Columns?.Select(c => c.Name).ToList() ?? new List<string>();
+            var rows = result.Rows?.Select(r => r.Values?.ToList() ?? new List<string>()).ToList() ?? new List<List<string>>();
+            var suggestRequest = new SuggestChartRequestInfo { Columns = columns, Rows = rows };
+            var suggestResponse = await Http.PostAsJsonAsync("api/v1/ai/sql/suggest-chart", suggestRequest, _runCts.Token);
+            var chartType = "line";
+            if (suggestResponse.IsSuccessStatusCode)
+            {
+                var suggest = await suggestResponse.Content.ReadFromJsonAsync<SuggestChartResponseInfo>(_runCts.Token);
+                if (!string.IsNullOrEmpty(suggest?.ChartType))
+                    chartType = suggest.ChartType.ToLowerInvariant();
+            }
+            if (result.Columns != null)
+                result.ChartType = chartType;
+            _currentRunResult = result;
+        }
+        catch (OperationCanceledException)
+        {
+            _executionError = "Cancelled.";
+        }
+        catch (Exception ex)
+        {
+            _executionError = ex.Message;
+        }
+        finally
+        {
+            _queryRunning = false;
+            _runCts?.Dispose();
+            _runCts = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void MergeCellIdsFromResponse(NotebookInfo? updated)
+    {
+        if (updated?.Cells == null || _notebook?.Cells == null) return;
+        if (updated.Cells.Count != _notebook.Cells.Count) return;
+        var currentCells = _notebook.Cells.ToList();
+        var updatedCells = updated.Cells.ToList();
+        for (var i = 0; i < currentCells.Count; i++)
+        {
+            if (currentCells[i].Id == 0 && updatedCells[i].Id != 0)
+                currentCells[i].Id = updatedCells[i].Id;
+        }
+    }
+
+    /// <summary>Add current editor content and result as a new cell (or empty cell if nothing).</summary>
+    private async Task AddCurrentAsCell()
+    {
+        if (_notebook == null) return;
+        var content = (_sqlEditorContent ?? "").Trim();
+        var hasChart = _currentRunResult != null && !string.IsNullOrEmpty(_currentRunResult.ChartType);
+        var newCell = new NotebookCellInfo
+        {
+            Id = 0,
+            Type = hasChart ? NotebookCellTypeInfo.Chart : NotebookCellTypeInfo.Sql,
+            Content = content,
+            ExecutionResult = _currentRunResult ?? new NotebookCellExecutionResultInfo(),
+            CatalogNodeId = _selectedDatabase?.Id,
+            DatabaseDisplayName = _selectedDatabase?.DatabaseName ?? _selectedDatabase?.Name,
+        };
+        _notebook.Cells ??= new List<NotebookCellInfo>();
+        _notebook.Cells.Add(newCell);
+        var updated = await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
+        MergeCellIdsFromResponse(updated);
+        _currentRunResult = null;
+        _sqlEditorContent = "";
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task AddMarkdownCell()
+    {
+        if (_notebook == null) return;
+        var content = _sqlEditorContent?.Trim() ?? "";
+        var newCell = new NotebookCellInfo
+        {
+            Id = 0,
+            Type = NotebookCellTypeInfo.Markdown,
+            Content = content,
+            ExecutionResult = new NotebookCellExecutionResultInfo(),
+        };
+        _notebook.Cells ??= new List<NotebookCellInfo>();
+        _notebook.Cells.Add(newCell);
+        _sqlEditorContent = "";
+        _notebook = await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task InsertIntoEditor(string text)
+    {
+        await CatalogInsertService.PasteToEditorAsync(text ?? "");
+    }
+
+    private async Task InsertTableNameIntoEditor(string tableName)
+    {
+        var current = _sqlEditorContent?.TrimEnd() ?? "";
+        _sqlEditorContent = string.IsNullOrEmpty(current) ? tableName : current + " " + tableName;
+        CurrentSqlContext.CurrentSql = _sqlEditorContent;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task InsertDescriptionIntoNotebook(CatalogNodeInfo node)
+    {
+        if (_notebook == null || node.EntityId == null) return;
+        try
+        {
+            var entity = await Http.GetFromJsonAsync<DbEntityInfo>($"api/v1/catalog/entities/{node.EntityId.Value:N}", CancellationToken.None);
+            if (entity == null) return;
+            var content = string.IsNullOrWhiteSpace(entity.Description)
+                ? $"## {entity.DisplayName ?? entity.Name}\n\n*No description*"
+                : $"## {entity.DisplayName ?? entity.Name}\n\n{entity.Description}";
+            var newCell = new NotebookCellInfo
+            {
+                Id = 0,
+                Type = NotebookCellTypeInfo.Markdown,
+                Content = content,
+                ExecutionResult = new NotebookCellExecutionResultInfo(),
+            };
+            _notebook.Cells ??= new List<NotebookCellInfo>();
+            _notebook.Cells.Add(newCell);
+            _notebook = await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Ignore fetch errors
+        }
+    }
+
+    private async Task InsertSelectIntoEditor(CatalogNodeInfo node)
+    {
+        if (node.EntityId == null) return;
+        var selectText = await LoadEntitySelectTextAsync(node.EntityId.Value);
+        if (string.IsNullOrEmpty(selectText)) return;
+        var dbName = node.DatabaseName ?? _selectedDatabase?.DatabaseName;
+        if (!string.IsNullOrWhiteSpace(dbName))
+            selectText = "USE [" + dbName + "];\n" + selectText;
+        _sqlEditorContent = selectText;
+        CurrentSqlContext.CurrentSql = _sqlEditorContent;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnCellChartTypeChanged((int CellId, string ChartType) arg)
+    {
+        if (_notebook?.Cells == null) return;
+        var cell = _notebook.Cells.FirstOrDefault(c => c.Id == arg.CellId);
+        if (cell?.ExecutionResult != null)
+        {
+            cell.ExecutionResult.ChartType = arg.ChartType;
+            _notebook = await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
+        }
+    }
+
+    private async Task OnCellFormat((int CellId, string FormattedContent) arg)
+    {
+        if (_notebook?.Cells == null) return;
+        var cell = _notebook.Cells.FirstOrDefault(c => c.Id == arg.CellId);
+        if (cell == null && arg.CellId == 0)
+            cell = _notebook.Cells.LastOrDefault(c => c.Id == 0);
+        if (cell == null) return;
+        cell.Content = arg.FormattedContent;
+        await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SaveNotebookAfterCellUpdate()
+    {
+        if (_notebook == null) return;
+        await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleDeleteCell(NotebookCellInfo cell)
+    {
+        if (_notebook?.Cells == null) return;
+        _notebook.Cells.Remove(cell);
+        _notebook = await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task<List<CatalogNodeInfo>?> LoadCatalogNodesAsync(Guid? parentId)
+    {
+        var url = parentId.HasValue
+            ? $"api/v1/catalog/nodes?parentId={parentId.Value:N}"
+            : "api/v1/catalog/nodes";
+        var list = await Http.GetFromJsonAsync<List<CatalogNodeInfo>>(url, CancellationToken.None);
+        return list;
+    }
+
+    private async Task<string?> LoadEntitySelectTextAsync(Guid entityId)
+    {
+        var top = Math.Clamp(_selectTopCount, 1, 10000);
+        var res = await Http.GetAsync($"api/v1/catalog/entity/{entityId:N}/select-text?top={top}", CancellationToken.None);
+        if (!res.IsSuccessStatusCode) return null;
+        return await res.Content.ReadAsStringAsync(CancellationToken.None);
+    }
+}

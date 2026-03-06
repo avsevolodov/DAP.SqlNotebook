@@ -1,0 +1,216 @@
+@using DAP.SqlNotebook.UI.Components
+@using DAP.SqlNotebook.UI.Helpers
+@using global::MudBlazor
+@using Microsoft.AspNetCore.Components.Web
+@inherits LayoutComponentBase
+@implements IDisposable
+
+@* Required *@
+<MudThemeProvider Theme="_greenTheme" />
+<MudPopoverProvider />
+
+@* Needed for snackbars *@
+<MudSnackbarProvider />
+
+
+<MudDialogProvider FullWidth="true"
+                   MaxWidth="MaxWidth.Large"
+                   CloseButton="true"
+                   Position="DialogPosition.Center"
+                   CloseOnEscapeKey="true"
+                   BackdropClick="false" />
+
+<MudLayout>
+
+    <MudAppBar Dense="true" Elevation="4" ToolBarClass="align-stretch">
+
+        <MudStack Row="true">
+            <AppBarNavLink Href="@MainRoutes.Workspaces">
+                Workspaces
+            </AppBarNavLink>
+            <AppBarNavLink Href="@MainRoutes.SchemaCatalog">
+                Schema catalog
+            </AppBarNavLink>
+        </MudStack>
+
+    </MudAppBar>
+
+    <MudPaper Class="px-4 pt-2" Elevation="0">
+        <Breadcrumbs />
+    </MudPaper>
+
+    <MudMainContent Style="position: relative; width:100%; height:100%; display:flex; flex-direction:row; overflow:hidden;">
+        @* Left icon bar: toggle panels *@
+        <div class="layout-left-icon-bar" style="flex-shrink:0; width: 48px; border-right: 1px solid rgba(0,0,0,0.12); display: flex; flex-direction: column; align-items: center; padding: 8px 0; gap: 4px;">
+            <MudIconButton Icon="@Icons.Material.Filled.Folder"
+                           Title="Workspaces"
+                           Color="@(_workspacesPanelVisible ? Color.Primary : Color.Default)"
+                           Variant="@(_workspacesPanelVisible ? Variant.Filled : Variant.Text)"
+                           OnClick="ToggleWorkspacesPanel"
+                           Class="layout-panel-icon" />
+            <MudIconButton Icon="@Icons.Material.Filled.Storage"
+                           Title="Schema"
+                           Color="@(_schemaPanelVisible ? Color.Primary : Color.Default)"
+                           Variant="@(_schemaPanelVisible ? Variant.Filled : Variant.Text)"
+                           OnClick="ToggleSchemaPanel"
+                           Class="layout-panel-icon" />
+        </div>
+        @if (_workspacesPanelVisible)
+        {
+            <MudPaper Class="pa-0 layout-panel-left layout-panel-workspaces" Style="@($"width:{_workspacesPanelWidth}px; min-width:160px; max-width:420px; border-right: 1px solid rgba(0,0,0,0.12); overflow:auto; flex-shrink:0;")">
+                <div class="layout-panel-header">
+                    <MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Class="mr-1" />
+                    <span class="layout-panel-title">Workspaces</span>
+                    <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small" title="Свернуть" OnClick="ToggleWorkspacesPanel" Class="ml-auto" />
+                </div>
+                <WorkspacesTree />
+            </MudPaper>
+            <div class="layout-resizer layout-resizer-left" @onmousedown='@(e => StartResize(e, "leftWorkspaces"))' title="Изменить ширину"></div>
+        }
+        @if (_schemaPanelVisible)
+        {
+            <MudPaper Class="pa-0 layout-panel-left layout-panel-schema" Style="@($"width:{_schemaPanelWidth}px; min-width:180px; max-width:500px; border-right: 1px solid rgba(0,0,0,0.12); overflow:auto; flex-shrink:0;")">
+                <div class="layout-panel-header">
+                    <MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" Class="mr-1" />
+                    <span class="layout-panel-title">Schema</span>
+                    <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small" title="Свернуть" OnClick="ToggleSchemaPanel" Class="ml-auto" />
+                </div>
+                <SchemaTree />
+            </MudPaper>
+            <div class="layout-resizer layout-resizer-left" @onmousedown='@(e => StartResize(e, "leftSchema"))' title="Изменить ширину"></div>
+        }
+        <div class="layout-body">
+            @Body
+        </div>
+        <div class="layout-resizer layout-resizer-right"
+             @onmousedown="StartResizeRight"
+             title="Drag to resize"
+             style="width:4px; cursor:col-resize; flex-shrink:0; background: transparent;"></div>
+        <MudPaper Class="pa-0 layout-panel-right" Style="@($"width:{_rightPanelWidth}px; min-width:200px; max-width:500px; border-left: 1px solid rgba(0,0,0,0.12); overflow:hidden; display:flex; flex-direction:column; flex-shrink:0;")">
+            <AiAgentPanel />
+        </MudPaper>
+    </MudMainContent>
+
+</MudLayout>
+
+@code {
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+
+    private static readonly MudTheme _greenTheme = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#2E7D32",
+            PrimaryContrastText = "#FFFFFF",
+            Secondary = "#1B5E20",
+            SecondaryContrastText = "#FFFFFF"
+        },
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#4CAF50",
+            PrimaryContrastText = "#FFFFFF",
+            Secondary = "#388E3C",
+            SecondaryContrastText = "#FFFFFF"
+        }
+    };
+
+    private double _workspacesPanelWidth = 220;
+    private double _schemaPanelWidth = 260;
+    private double _rightPanelWidth = 320;
+    private bool _workspacesPanelVisible = true;
+    private bool _schemaPanelVisible = true;
+    private DotNetObjectReference<MainLayout>? _dotNetRef;
+    private const string StorageKeyWorkspacesWidth = "sqlnotebook:layout:workspacesWidth";
+    private const string StorageKeySchemaWidth = "sqlnotebook:layout:schemaWidth";
+    private const string StorageKeyRight = "sqlnotebook:layout:rightWidth";
+    private const string StorageKeyWorkspacesVisible = "sqlnotebook:layout:workspacesVisible";
+    private const string StorageKeySchemaVisible = "sqlnotebook:layout:schemaVisible";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var v1 = await JS.InvokeAsync<string>("localStorage.getItem", StorageKeyWorkspacesVisible);
+            if (v1 == "false") _workspacesPanelVisible = false;
+            var v2 = await JS.InvokeAsync<string>("localStorage.getItem", StorageKeySchemaVisible);
+            if (v2 == "false") _schemaPanelVisible = false;
+            var w1 = await JS.InvokeAsync<string>("localStorage.getItem", StorageKeyWorkspacesWidth);
+            if (!string.IsNullOrEmpty(w1) && double.TryParse(w1, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var ww) && ww >= 160 && ww <= 420)
+                _workspacesPanelWidth = ww;
+            var w2 = await JS.InvokeAsync<string>("localStorage.getItem", StorageKeySchemaWidth);
+            if (!string.IsNullOrEmpty(w2) && double.TryParse(w2, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var sw) && sw >= 180 && sw <= 500)
+                _schemaPanelWidth = sw;
+            var right = await JS.InvokeAsync<string>("localStorage.getItem", StorageKeyRight);
+            if (!string.IsNullOrEmpty(right) && double.TryParse(right, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var r) && r >= 200 && r <= 500)
+                _rightPanelWidth = r;
+        }
+        catch { /* ignore */ }
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+            _dotNetRef = DotNetObjectReference.Create(this);
+    }
+
+    public void Dispose()
+    {
+        _dotNetRef?.Dispose();
+    }
+
+    private void ToggleWorkspacesPanel()
+    {
+        _workspacesPanelVisible = !_workspacesPanelVisible;
+        _ = SavePanelVisibilityAsync();
+    }
+
+    private void ToggleSchemaPanel()
+    {
+        _schemaPanelVisible = !_schemaPanelVisible;
+        _ = SavePanelVisibilityAsync();
+    }
+
+    private async Task SavePanelVisibilityAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", StorageKeyWorkspacesVisible, _workspacesPanelVisible ? "true" : "false");
+            await JS.InvokeVoidAsync("localStorage.setItem", StorageKeySchemaVisible, _schemaPanelVisible ? "true" : "false");
+        }
+        catch { }
+    }
+
+    private async Task StartResize(MouseEventArgs e, string side)
+    {
+        var startWidth = side == "leftWorkspaces" ? _workspacesPanelWidth : _schemaPanelWidth;
+        var minW = side == "leftWorkspaces" ? 160 : 180;
+        var maxW = side == "leftWorkspaces" ? 420 : 500;
+        await JS.InvokeVoidAsync("sqlNotebookLayout.startResize", _dotNetRef, side, e.ClientX, startWidth, minW, maxW);
+    }
+
+    private async Task StartResizeRight(MouseEventArgs e)
+    {
+        await JS.InvokeVoidAsync("sqlNotebookLayout.startResize", _dotNetRef, "right", e.ClientX, _rightPanelWidth);
+    }
+
+    [JSInvokable]
+    public async Task OnResize(string side, double width)
+    {
+        if (side == "leftWorkspaces")
+        {
+            _workspacesPanelWidth = Math.Clamp(width, 160, 420);
+            try { await JS.InvokeVoidAsync("localStorage.setItem", StorageKeyWorkspacesWidth, _workspacesPanelWidth.ToString(System.Globalization.CultureInfo.InvariantCulture)); } catch { }
+        }
+        else if (side == "leftSchema")
+        {
+            _schemaPanelWidth = Math.Clamp(width, 180, 500);
+            try { await JS.InvokeVoidAsync("localStorage.setItem", StorageKeySchemaWidth, _schemaPanelWidth.ToString(System.Globalization.CultureInfo.InvariantCulture)); } catch { }
+        }
+        else if (side == "right")
+        {
+            _rightPanelWidth = Math.Clamp(width, 200, 500);
+            try { await JS.InvokeVoidAsync("localStorage.setItem", StorageKeyRight, _rightPanelWidth.ToString(System.Globalization.CultureInfo.InvariantCulture)); } catch { }
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+}

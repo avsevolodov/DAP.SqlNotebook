@@ -1,0 +1,197 @@
+@page "/workspaces"
+@using System.Threading
+@using DAP.SqlNotebook.Contract.Entities
+@using DAP.SqlNotebook.Service.Client.V1
+@using DAP.SqlNotebook.Service.Client.Exceptions
+@using DAP.SqlNotebook.UI.Helpers
+@using global::MudBlazor
+@using SnackbarExtensions = DAP.SqlNotebook.UI.SnackbarExtensions
+@using Microsoft.AspNetCore.Components.Web
+@using MudBlazor
+@inject IWorkspaceManager WorkspaceManager
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Workspaces</PageTitle>
+
+<MudPaper Class="pa-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4" Spacing="2">
+        <MudText Typo="Typo.h5">My workspaces</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadWorkspaces">Reload</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="OpenCreateDialog">New workspace</MudButton>
+    </MudStack>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-2" />
+    }
+
+    <MudTable T="WorkspaceInfo" Items="@_workspaces" Hover="true" Breakpoint="Breakpoint.Sm" Class="mt-4">
+        <HeaderContent>
+            <MudTh>Name</MudTh>
+            <MudTh>Description</MudTh>
+            <MudTh Style="width:240px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate Context="row">
+            <MudTd DataLabel="Name">
+                <MudLink Href="@GetNotebooksRoute(row.Id)" Style="font-weight: 500;">
+                    @row.Name
+                </MudLink>
+            </MudTd>
+            <MudTd DataLabel="Description">@(row.Description ?? "—")</MudTd>
+            <MudTd DataLabel="Actions">
+                <MudIconButton Icon="@Icons.Material.Filled.List" Href="@GetNotebooksRoute(row.Id)" Title="Notebooks in workspace" />
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@(() => OpenEditDialog(row))" Title="Edit" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="@(() => ConfirmDelete(row))" Title="Delete" Color="Color.Error" />
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    @if (!_loading && _workspaces.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">No workspaces yet. Create one to organize your notebooks.</MudAlert>
+    }
+</MudPaper>
+
+<MudDialog @bind-Visible="_showEditDialog" Options="@(new DialogOptions { CloseOnEscapeKey = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_isEdit ? "Edit workspace" : "New workspace")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack @onkeydown="OnEditDialogKeyDown">
+            <MudTextField @bind-Value="_editName" Label="Name" Variant="Variant.Outlined" Class="mt-2" Required />
+            <MudTextField @bind-Value="_editDescription" Label="Description" Variant="Variant.Outlined" Class="mt-2" Lines="2" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseEditDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveWorkspace">@(_isEdit ? "Save" : "Create")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<WorkspaceInfo> _workspaces = new();
+    private bool _loading = true;
+    private bool _showEditDialog;
+    private bool _isEdit;
+    private Guid _editId;
+    private string _editName = "";
+    private string? _editDescription;
+
+    private string GetNotebooksRoute(Guid workspaceId)
+    {
+        return $"/notebooks?workspaceId={workspaceId:N}";
+    }
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadWorkspaces();
+    }
+
+    private async Task LoadWorkspaces()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            _workspaces = (await WorkspaceManager.GetWorkspaces(CancellationToken.None)).ToList();
+        }
+        catch (HttpClientException<ProblemDetailsData>)
+        {
+            SnackbarExtensions.ShowPopupMessage(Snackbar, "Failed to load workspaces.", Severity.Error);
+            _workspaces = new List<WorkspaceInfo>();
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenCreateDialog()
+    {
+        _isEdit = false;
+        _editId = default;
+        _editName = "";
+        _editDescription = null;
+        _showEditDialog = true;
+    }
+
+    private void OpenEditDialog(WorkspaceInfo ws)
+    {
+        _isEdit = true;
+        _editId = ws.Id;
+        _editName = ws.Name ?? "";
+        _editDescription = ws.Description;
+        _showEditDialog = true;
+    }
+
+    private void CloseEditDialog()
+    {
+        _showEditDialog = false;
+    }
+
+    private async Task OnEditDialogKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey && !string.IsNullOrWhiteSpace(_editName))
+            await SaveWorkspace();
+    }
+
+    private async Task SaveWorkspace()
+    {
+        if (string.IsNullOrWhiteSpace(_editName))
+        {
+            SnackbarExtensions.ShowPopupMessage(Snackbar, "Enter workspace name.", Severity.Warning);
+            return;
+        }
+        try
+        {
+            if (_isEdit)
+            {
+                await WorkspaceManager.UpdateWorkspace(_editId, new WorkspaceInfo
+                {
+                    Id = _editId,
+                    Name = _editName.Trim(),
+                    Description = string.IsNullOrWhiteSpace(_editDescription) ? null : _editDescription.Trim(),
+                }, CancellationToken.None);
+                SnackbarExtensions.ShowPopupMessage(Snackbar, "Workspace updated.", Severity.Success);
+            }
+            else
+            {
+                var created = await WorkspaceManager.CreateWorkspace(new WorkspaceInfo
+                {
+                    Name = _editName.Trim(),
+                    Description = string.IsNullOrWhiteSpace(_editDescription) ? null : _editDescription.Trim(),
+                }, CancellationToken.None);
+                SnackbarExtensions.ShowPopupMessage(Snackbar, "Workspace created.", Severity.Success);
+                _showEditDialog = false;
+                await LoadWorkspaces();
+                Navigation.NavigateTo(GetNotebooksRoute(created.Id), forceLoad: false);
+            }
+        }
+        catch (HttpClientException<ProblemDetailsData>)
+        {
+            SnackbarExtensions.ShowPopupMessage(Snackbar, _isEdit ? "Failed to update workspace." : "Failed to create workspace.", Severity.Error);
+        }
+    }
+
+    private async Task ConfirmDelete(WorkspaceInfo ws)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Delete workspace",
+            $"Delete workspace \"{ws.Name}\"? Notebooks in this workspace will not be deleted but will have no workspace.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+        if (confirmed != true) return;
+        try
+        {
+            await WorkspaceManager.DeleteWorkspace(ws.Id, CancellationToken.None);
+            SnackbarExtensions.ShowPopupMessage(Snackbar, "Workspace deleted.", Severity.Success);
+            await LoadWorkspaces();
+        }
+        catch (HttpClientException<ProblemDetailsData>)
+        {
+            SnackbarExtensions.ShowPopupMessage(Snackbar, "Failed to delete workspace.", Severity.Error);
+        }
+    }
+}

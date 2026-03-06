@@ -1,0 +1,167 @@
+@namespace DAP.SqlNotebook.UI.Components
+@using System.Globalization
+@using System.Threading
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Routing
+@using MudBlazor
+@using DAP.SqlNotebook.UI.Helpers
+@using DAP.SqlNotebook.Service.Client.V1
+@using DAP.SqlNotebook.Contract.Entities
+@implements IDisposable
+
+<MudBreadcrumbs Class="py-1">
+    @foreach (var item in _items)
+    {
+        @if (item.Href != null)
+        {
+            <MudBreadcrumbItem Href="@item.Href">@item.Text</MudBreadcrumbItem>
+        }
+        else
+        {
+            <MudBreadcrumbItem Disabled="true">@item.Text</MudBreadcrumbItem>
+        }
+    }
+</MudBreadcrumbs>
+
+@code {
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+    [Inject] private INotebookManager NotebookManager { get; set; } = null!;
+    [Inject] private IWorkspaceManager WorkspaceManager { get; set; } = null!;
+    [Inject] private ICurrentUserService UserService { get; set; } = null!;
+
+    private List<BreadcrumbItem> _items = new();
+    private string? _userName;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var identity = await UserService.GetIdentity(CancellationToken.None);
+            _userName = identity.Identity?.Name?.Trim();
+        }
+        catch { }
+        if (string.IsNullOrEmpty(_userName)) _userName = "User";
+        Navigation.LocationChanged += OnLocationChanged;
+        await BuildItemsAsync();
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await BuildItemsAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task BuildItemsAsync()
+    {
+        var path = new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/');
+        _items.Clear();
+
+        _items.Add(new BreadcrumbItem(_userName ?? "User", MainRoutes.Workspaces, false));
+
+        if (path.StartsWith("/workspaces", StringComparison.OrdinalIgnoreCase))
+        {
+            if (path.Equals("/workspaces", StringComparison.OrdinalIgnoreCase))
+            {
+                _items.Add(new BreadcrumbItem("Workspaces", null, true));
+                return;
+            }
+            _items.Add(new BreadcrumbItem("Workspaces", null, true));
+            return;
+        }
+
+        if (path.StartsWith("/notebooks", StringComparison.OrdinalIgnoreCase))
+        {
+            if (path.Equals("/notebooks", StringComparison.OrdinalIgnoreCase))
+            {
+                var query = new Uri(Navigation.Uri).Query;
+                var workspaceId = ParseWorkspaceIdFromQuery(query);
+                if (workspaceId.HasValue)
+                {
+                    var ws = await WorkspaceManager.GetWorkspace(workspaceId.Value, CancellationToken.None);
+                    _items.Add(new BreadcrumbItem(ws?.Name ?? "Workspace", $"/notebooks?workspaceId={workspaceId.Value:N}", false));
+                }
+                else
+                {
+                    _items.Add(new BreadcrumbItem("Workspaces", MainRoutes.Workspaces, false));
+                }
+                _items.Add(new BreadcrumbItem("Notebooks", null, true));
+                return;
+            }
+
+            if (path.StartsWith("/notebooks/new", StringComparison.OrdinalIgnoreCase))
+            {
+                _items.Add(new BreadcrumbItem("Workspaces", MainRoutes.Workspaces, false));
+                _items.Add(new BreadcrumbItem("Notebooks", MainRoutes.Notebooks, false));
+                _items.Add(new BreadcrumbItem("New notebook", null, true));
+                return;
+            }
+
+            var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length >= 2 && Guid.TryParse(segments[1], CultureInfo.InvariantCulture, out var notebookId))
+            {
+                var notebook = await NotebookManager.GetNotebook(notebookId, CancellationToken.None);
+                if (notebook != null)
+                {
+                    if (notebook.WorkspaceId.HasValue)
+                    {
+                        var ws = await WorkspaceManager.GetWorkspace(notebook.WorkspaceId.Value, CancellationToken.None);
+                        _items.Add(new BreadcrumbItem(
+                            ws?.Name ?? "Workspace",
+                            $"/notebooks?workspaceId={notebook.WorkspaceId.Value:N}",
+                            false));
+                    }
+                    else
+                    {
+                        _items.Add(new BreadcrumbItem("Workspaces", MainRoutes.Workspaces, false));
+                    }
+                    _items.Add(new BreadcrumbItem(notebook.Name ?? "Notebook", null, true));
+                    return;
+                }
+            }
+
+            _items.Add(new BreadcrumbItem("Notebooks", MainRoutes.Notebooks, false));
+            _items.Add(new BreadcrumbItem("Notebook", null, true));
+        }
+        else
+        {
+            _items.Add(new BreadcrumbItem("Workspaces", null, true));
+        }
+    }
+
+    private static Guid? ParseWorkspaceIdFromQuery(string query)
+    {
+        if (string.IsNullOrEmpty(query) || query.Length < 2) return null;
+        var q = query.AsSpan().TrimStart('?');
+        const string key = "workspaceId=";
+        var i = q.IndexOf(key, StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return null;
+        var start = i + key.Length;
+        var end = start;
+        while (end < q.Length && (char.IsLetterOrDigit(q[end]) || q[end] == '-')) end++;
+        var value = q[start..end].ToString();
+        return Guid.TryParse(value, CultureInfo.InvariantCulture, out var g) ? g : null;
+    }
+
+    private sealed class BreadcrumbItem
+    {
+        public string Text { get; }
+        public string? Href { get; }
+        public bool IsCurrent { get; }
+
+        public BreadcrumbItem(string text, string? href, bool isCurrent)
+        {
+            Text = text;
+            Href = href;
+            IsCurrent = isCurrent;
+        }
+    }
+}

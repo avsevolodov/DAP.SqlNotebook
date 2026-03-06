@@ -1,0 +1,410 @@
+@namespace DAP.SqlNotebook.UI.Components
+@using System.Collections.Generic
+@using System.Linq
+@using System.Threading
+@using DAP.Markdown
+@using DAP.SqlNotebook.Contract.Entities
+@using DAP.SqlNotebook.UI.Helpers
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@using MudBlazor
+@implements IDisposable
+
+<div class="notebook-edit">
+    @* Cells list *@
+    @if (Notebook?.Cells != null && Notebook.Cells.Count > 0)
+    {
+        <MudStack Spacing="2" Class="mb-4">
+            @foreach (var cell in Notebook.Cells)
+            {
+                @if (cell.Type == NotebookCellTypeInfo.Markdown)
+                {
+                    <div class="d-flex align-items-start pa-2" style="gap: 8px;">
+                        <div class="flex-grow-1"><MudMarkdown Value="@cell.Content" Props="@GetMarkdownProps()" /></div>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Title="Delete cell" OnClick="@(() => OnDeleteCell.InvokeAsync(cell))" />
+                    </div>
+                }
+                else if (cell.Type == NotebookCellTypeInfo.Sql || cell.Type == NotebookCellTypeInfo.Chart)
+                {
+                    <NotebookCodeCell Cell="cell"
+                                              NotebookId="@NotebookId"
+                                              QueryTimeoutSeconds="@QueryTimeoutSeconds"
+                                              SelectedDatabase="@SelectedDatabase"
+                                              OnChartTypeChanged="OnChartTypeChanged"
+                                              OnFormatCell="OnFormatCell"
+                                              OnDeleteCell="OnDeleteCell"
+                                              OnInsertIntoEditor="OnInsertIntoEditor"
+                                              OnCellUpdated="OnCellUpdated" />
+                }
+            }
+        </MudStack>
+    }
+
+    @* Toolbar + Editor *@
+    <MudPaper Class="pa-3" Elevation="1" Outlined="true">
+        <MudStack Spacing="2">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap">
+                @if (IsQueryRunning)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Style="width:24px; height:24px;" />
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Running…</MudText>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="HandleCancelRun" StartIcon="@Icons.Material.Filled.Stop">Cancel</MudButton>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleRun" StartIcon="@Icons.Material.Filled.PlayArrow">Run</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="HandleRunAsChart" StartIcon="@Icons.Material.Filled.BarChart">Run as chart</MudButton>
+                    <MudButton Variant="Variant.Outlined" OnClick="HandleAddMarkdown" StartIcon="@Icons.Material.Filled.TextFields">Add Markdown</MudButton>
+                    <MudButton Variant="Variant.Outlined" OnClick="HandleFormatSql" StartIcon="@Icons.Material.Filled.FormatAlignLeft" Title="Format SQL">Format SQL</MudButton>
+                }
+                <MudMenu Open="_settingsOpen" OpenChanged="e => _settingsOpen = e" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                    <ActivatorContent>
+                        <MudIconButton Icon="@Icons.Material.Filled.Settings" Title="Editor settings" OnClick="@(() => _settingsOpen = true)" />
+                    </ActivatorContent>
+                    <ChildContent>
+                        <MudPaper Class="pa-3" Style="min-width: 200px;">
+                            <MudText Typo="Typo.subtitle2" Class="mb-2">Editor settings</MudText>
+                            <MudSelect T="string" Label="Theme" Value="@_editorTheme" ValueChanged="OnEditorThemeChanged" Variant="Variant.Outlined" Dense="true" Class="mt-2">
+                                <MudSelectItem Value="@("vs-dark")">Dark</MudSelectItem>
+                                <MudSelectItem Value="@("vs")">Light</MudSelectItem>
+                                <MudSelectItem Value="@("hc-black")">High contrast</MudSelectItem>
+                            </MudSelect>
+                            <MudNumericField T="int?" Value="_timeoutLocal" ValueChanged="OnTimeoutChanged" Label="Timeout (s)" Min="1" Max="300" Variant="Variant.Outlined" Dense="true" Class="mt-2" Style="max-width: 100%;" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Timer" Disabled="@IsQueryRunning" />
+                            <MudNumericField T="int" Value="_selectTopLocal" ValueChanged="OnSelectTopChanged" Label="TOP (rows)" Min="1" Max="10000" Variant="Variant.Outlined" Dense="true" Class="mt-2" Style="max-width: 100%;" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.TableChart" Disabled="@IsQueryRunning" />
+                        </MudPaper>
+                    </ChildContent>
+                </MudMenu>
+            </MudStack>
+            @if (!string.IsNullOrWhiteSpace(ExecutionError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-2" Dismissible="true" OnClose="ClearExecutionError">
+                    @(ExecutionError)
+                </MudAlert>
+            }
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">Новая ячейка — редактор запроса</MudText>
+            <div id="@_editorElementId" class="sql-notebook-editor-container"></div>
+            @if (CurrentRunResult != null)
+            {
+                <div class="notebook-current-result mt-3">
+                    <NotebookQueryResult Result="@CurrentRunResult" MaxHeight="300" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="HandleAddNewCell" Class="mt-2">
+                        Добавить ячейку (сохранить результат)
+                    </MudButton>
+                </div>
+            }
+            else
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.Add" OnClick="HandleAddNewCell" Class="mt-2">
+                    Добавить пустую ячейку
+                </MudButton>
+            }
+        </MudStack>
+    </MudPaper>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public NotebookInfo Notebook { get; set; } = null!;
+    [Parameter] public Guid NotebookId { get; set; }
+    [Parameter] public CatalogNodeInfo? SelectedDatabase { get; set; }
+    [Parameter] public string? SqlEditorContent { get; set; }
+    [Parameter] public EventCallback<string?> SqlEditorContentChanged { get; set; }
+    [Parameter] public NotebookCellExecutionResultInfo? CurrentRunResult { get; set; }
+    [Parameter] public int? QueryTimeoutSeconds { get; set; }
+    [Parameter] public EventCallback<int?> OnQueryTimeoutChanged { get; set; }
+    [Parameter] public int SelectTopCount { get; set; } = 10;
+    [Parameter] public EventCallback<int> OnSelectTopCountChanged { get; set; }
+    [Parameter] public bool IsQueryRunning { get; set; }
+    [Parameter] public EventCallback OnCancelRun { get; set; }
+    [Parameter] public EventCallback OnRun { get; set; }
+    [Parameter] public EventCallback<string> OnRunSqlFromMarkdown { get; set; }
+    [Parameter] public EventCallback OnRunAsChart { get; set; }
+    [Parameter] public EventCallback OnAddNewCell { get; set; }
+    [Parameter] public EventCallback OnAddMarkdown { get; set; }
+    [Parameter] public EventCallback<string> OnInsertIntoEditor { get; set; }
+    [Parameter] public string? ExecutionError { get; set; }
+    [Parameter] public EventCallback<string?> ExecutionErrorChanged { get; set; }
+    [Parameter] public EventCallback<(int CellId, string ChartType)> OnChartTypeChanged { get; set; }
+    [Parameter] public EventCallback<(int CellId, string FormattedContent)> OnFormatCell { get; set; }
+    [Parameter] public EventCallback<NotebookCellInfo> OnDeleteCell { get; set; }
+    [Parameter] public EventCallback OnCellUpdated { get; set; }
+
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+    [Inject] private ICatalogInsertService CatalogInsertService { get; set; } = null!;
+
+    private const string EditorElementId = "sql-notebook-editor";
+    private string _editorElementId = EditorElementId;
+    private string? _lastSetContent;
+    private int? _timeoutLocal;
+    private int _selectTopLocal = 10;
+    private bool _editorCreated;
+    private DotNetObjectReference<NotebookEdit>? _dotNetRef;
+    private int _createRetryCount;
+    private const int MaxCreateRetries = 25;
+    private bool _settingsOpen;
+    private string _editorTheme = "vs-dark";
+    private int _lastCellCount = -1;
+    private MudMarkdownProps? _cachedMarkdownProps;
+
+    protected override void OnParametersSet()
+    {
+        if (QueryTimeoutSeconds != _timeoutLocal)
+            _timeoutLocal = QueryTimeoutSeconds;
+        if (SelectTopCount != _selectTopLocal && SelectTopCount >= 1)
+        {
+            _selectTopLocal = SelectTopCount;
+            CatalogInsertService.SelectTopCount = SelectTopCount;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            _dotNetRef = DotNetObjectReference.Create(this);
+
+        var content = SqlEditorContent ?? "";
+        if (!_editorCreated)
+        {
+            try
+            {
+                var created = await JS.InvokeAsync<bool>("sqlNotebookMonaco.createAsync", _editorElementId, "sql", content);
+                if (created)
+                {
+                    _editorCreated = true;
+                    _lastSetContent = content;
+                    _lastCellCount = Notebook?.Cells?.Count ?? 0;
+                    if (_dotNetRef != null)
+                        await JS.InvokeVoidAsync("sqlNotebookMonaco.registerRunCommand", _editorElementId, _dotNetRef);
+                    CatalogInsertService.SetInsertAtCursorCallback(InsertColumnNameAtCursorAsync);
+                    CatalogInsertService.SetPasteToEditorCallback(PasteToEditorToMonacoAsync);
+                    try
+                    {
+                        _editorTheme = await JS.InvokeAsync<string>("sqlNotebookMonaco.getEditorTheme") ?? "vs-dark";
+                    }
+                    catch { }
+                    try { await JS.InvokeVoidAsync("sqlNotebookHighlightCode"); } catch { }
+                }
+                else
+                {
+                    // Element not in DOM yet (e.g. after client-side navigation); retry after short delay
+                    _createRetryCount++;
+                    if (_createRetryCount < MaxCreateRetries)
+                    {
+                        await Task.Delay(100);
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                _createRetryCount++;
+                if (_createRetryCount < MaxCreateRetries)
+                {
+                    await Task.Delay(100);
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+            return;
+        }
+        if (_lastSetContent != content)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("sqlNotebookMonaco.setValue", _editorElementId, content);
+                _lastSetContent = content;
+                await JS.InvokeVoidAsync("sqlNotebookHighlightCode");
+            }
+            catch { }
+        }
+        else
+        {
+            var cellCount = Notebook?.Cells?.Count ?? 0;
+            if (cellCount != _lastCellCount)
+            {
+                _lastCellCount = cellCount;
+                try { await JS.InvokeVoidAsync("sqlNotebookHighlightCode"); } catch { }
+            }
+        }
+    }
+
+    [JSInvokable]
+    public async Task RunFromEditor()
+    {
+        await HandleRun();
+    }
+
+    private async Task HandleRun()
+    {
+        await FlushEditorContent();
+        await OnRun.InvokeAsync();
+    }
+
+    private async Task HandleRunAsChart()
+    {
+        await FlushEditorContent();
+        await OnRunAsChart.InvokeAsync();
+    }
+
+    private async Task HandleAddNewCell()
+    {
+        await FlushEditorContent();
+        if (OnAddNewCell.HasDelegate)
+            await OnAddNewCell.InvokeAsync();
+    }
+
+    private async Task HandleAddMarkdown()
+    {
+        await FlushEditorContent();
+        await OnAddMarkdown.InvokeAsync();
+    }
+
+    private async Task HandleFormatSql()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("sqlNotebookMonaco.formatDocument", _editorElementId);
+            await FlushEditorContent();
+        }
+        catch { }
+    }
+
+    private async Task HandleCancelRun()
+    {
+        if (OnCancelRun.HasDelegate)
+            await OnCancelRun.InvokeAsync();
+    }
+
+    private async Task FlushEditorContent()
+    {
+        try
+        {
+            var value = await GetEditorContentAsync();
+            _lastSetContent = value ?? "";
+            await SqlEditorContentChanged.InvokeAsync(value);
+            if (OnQueryTimeoutChanged.HasDelegate && _timeoutLocal != QueryTimeoutSeconds)
+                await OnQueryTimeoutChanged.InvokeAsync(_timeoutLocal);
+        }
+        catch { }
+    }
+
+    private async Task OnTimeoutChanged(int? value)
+    {
+        _timeoutLocal = value;
+        if (OnQueryTimeoutChanged.HasDelegate)
+            await OnQueryTimeoutChanged.InvokeAsync(value);
+    }
+
+    private async Task OnSelectTopChanged(int value)
+    {
+        var n = Math.Clamp(value, 1, 10000);
+        _selectTopLocal = n;
+        CatalogInsertService.SelectTopCount = n;
+        if (OnSelectTopCountChanged.HasDelegate)
+            await OnSelectTopCountChanged.InvokeAsync(n);
+    }
+
+    private async Task OnEditorThemeChanged(string theme)
+    {
+        _editorTheme = theme ?? "vs-dark";
+        try
+        {
+            await JS.InvokeVoidAsync("sqlNotebookMonaco.setTheme", _editorElementId, _editorTheme);
+        }
+        catch { }
+        StateHasChanged();
+    }
+
+    private async Task<string?> GetEditorContentAsync()
+    {
+        try
+        {
+            return await JS.InvokeAsync<string>("sqlNotebookMonaco.getValue", _editorElementId);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task PasteToEditor(string content)
+    {
+        if (OnInsertIntoEditor.HasDelegate)
+            await OnInsertIntoEditor.InvokeAsync(content ?? "");
+    }
+
+    private async Task PasteToEditorToMonacoAsync(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("sqlNotebookMonaco.setValue", _editorElementId, text);
+            _lastSetContent = text;
+        }
+        catch { }
+    }
+
+    private async Task InsertColumnNameAtCursorAsync(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("sqlNotebookMonaco.insertAtCursor", _editorElementId, text);
+            await FlushEditorContent();
+        }
+        catch { }
+    }
+
+    private async Task CopyCellContent(string? content)
+    {
+        if (string.IsNullOrEmpty(content)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("sqlNotebookCopyToClipboard", content);
+        }
+        catch { }
+    }
+
+    private async Task RunSqlFromMarkdown(string sql)
+    {
+        if (OnRunSqlFromMarkdown.HasDelegate)
+            await OnRunSqlFromMarkdown.InvokeAsync(sql?.Trim() ?? "");
+    }
+
+    private MudMarkdownProps GetMarkdownProps()
+    {
+        if (_cachedMarkdownProps != null)
+            return _cachedMarkdownProps;
+        _cachedMarkdownProps = new MudMarkdownProps();
+        _cachedMarkdownProps.CodeBlock.CustomButtons = (code, language) => builder =>
+        {
+            var seq = 0;
+            builder.OpenComponent<MarkdownCodeBlockButtons>(seq++);
+            builder.AddAttribute(seq++, nameof(MarkdownCodeBlockButtons.Code), code);
+            builder.AddAttribute(seq++, nameof(MarkdownCodeBlockButtons.Language), language);
+            builder.AddAttribute(seq++, nameof(MarkdownCodeBlockButtons.OnRunSql), EventCallback.Factory.Create<string>(this, RunSqlFromMarkdown));
+            builder.AddAttribute(seq++, nameof(MarkdownCodeBlockButtons.OnPasteToEditor), EventCallback.Factory.Create<string>(this, PasteToEditor));
+            builder.CloseComponent();
+        };
+        return _cachedMarkdownProps;
+    }
+
+    private async Task FormatCellContent(NotebookCellInfo cell)
+    {
+        if (cell.Type != NotebookCellTypeInfo.Sql && cell.Type != NotebookCellTypeInfo.Chart) return;
+        var formatted = SqlFormatter.Format(cell.Content);
+        if (formatted == cell.Content) return;
+        if (OnFormatCell.HasDelegate)
+            await OnFormatCell.InvokeAsync((cell.Id, formatted));
+    }
+
+    private async Task ClearExecutionError()
+    {
+        await ExecutionErrorChanged.InvokeAsync(null);
+    }
+
+    public void Dispose()
+    {
+        _dotNetRef?.Dispose();
+        CatalogInsertService.SetInsertAtCursorCallback(null);
+        CatalogInsertService.SetPasteToEditorCallback(null);
+    }
+}

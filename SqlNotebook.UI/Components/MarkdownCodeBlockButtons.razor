@@ -1,0 +1,36 @@
+@namespace DAP.SqlNotebook.UI.Components
+@using global::MudBlazor
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+
+@if (IsSql)
+{
+    <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" Title="Run" OnClick="@(() => OnRunSql.InvokeAsync(Code))" Class="ma-2 mud-markdown-code-highlight-copybtn" />
+}
+<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Title="Copy" OnClick="@Copy" Class="ma-2 mud-markdown-code-highlight-copybtn" />
+<MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Title="Paste to editor" OnClick="@Paste" Class="ma-2 mud-markdown-code-highlight-copybtn" />
+
+@code {
+    [Parameter] public string Code { get; set; } = "";
+    [Parameter] public string Language { get; set; } = "";
+    [Parameter] public EventCallback<string> OnRunSql { get; set; }
+    [Parameter] public EventCallback<string> OnPasteToEditor { get; set; }
+
+    private bool IsSql => string.Equals(Language, "sql", StringComparison.OrdinalIgnoreCase);
+
+    private async Task Copy()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("sqlNotebookCopyToClipboard", Code);
+        }
+        catch { }
+    }
+
+    private async Task Paste()
+    {
+        await OnPasteToEditor.InvokeAsync(Code);
+    }
+
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+}

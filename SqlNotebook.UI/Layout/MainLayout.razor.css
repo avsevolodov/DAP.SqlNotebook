@@ -1,0 +1,25 @@
+/* Layout: resizable panels (used by MainLayout.razor) */
+
+.layout-panel-left,
+.layout-panel-right {
+    transition: width 0.1s ease-out;
+}
+
+.layout-resizer {
+    transition: background-color 0.15s ease;
+}
+
+.layout-resizer:hover {
+    background-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.layout-resizer-left:hover,
+.layout-resizer-right:hover {
+    background-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.layout-body {
+    flex: 1;
+    overflow: auto;
+    min-width: 0;
+}

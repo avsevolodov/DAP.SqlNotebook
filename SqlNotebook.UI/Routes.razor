@@ -1,0 +1,59 @@
+@using DAP.SqlNotebook.UI.Layout
+@using global::MudBlazor
+@using DAP.SqlNotebook.UI
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+
+@implements IAsyncDisposable
+
+@inject IJSRuntime JS
+
+<CascadingAuthenticationState>
+    <Router AppAssembly="typeof(Program).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                <NotAuthorized>
+                    <PageTitle>Not authorized</PageTitle>
+                    <MudStack Class="pt-10" Row Justify="Justify.Center">
+                        <MudText Typo="Typo.subtitle1">Sorry, you are not authorized to access this site.</MudText>
+                    </MudStack>
+                </NotAuthorized>
+            </AuthorizeRouteView>
+        </Found>
+        <NotFound>
+            <LayoutView Layout="typeof(MainLayout)">
+                <MudStack Class="pt-8" Row Justify="Justify.Center">
+                    <MudText Typo="Typo.subtitle1">The page was not found!</MudText>
+                </MudStack>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>
+
+@code {
+    private IJSObjectReference? module;
+
+    protected async override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./Routes.razor.js");
+            await module.InvokeVoidAsync("removeLoadingIndicator");
+        }
+    }
+
+    async ValueTask IAsyncDisposable.DisposeAsync()
+    {
+        if (module is not null)
+        {
+            try
+            {
+                await module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+    }
+}

@@ -1,0 +1,11 @@
+@using DAP.SqlNotebook.UI.Components
+@page "/notebooks"
+
+<PageTitle>Notebooks</PageTitle>
+
+<NotebooksGrid WorkspaceId="@WorkspaceId" />
+
+@code {
+    [SupplyParameterFromQuery]
+    public Guid? WorkspaceId { get; set; }
+}

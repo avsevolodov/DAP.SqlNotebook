@@ -1,0 +1,206 @@
+@namespace DAP.SqlNotebook.UI.Components
+@using System.Linq
+@using System.Threading
+@using DAP.SqlNotebook.Contract.Entities
+@using DAP.SqlNotebook.Service.Client.V1
+@using DAP.SqlNotebook.UI.Helpers
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@using MudBlazor
+
+<MudPaper Class="pa-3 notebook-cell-paper" Elevation="1" Outlined="true">
+    <MudStack Spacing="1">
+        <div class="notebook-cell-code-frame notebook-cell-header-section">
+            <div class="notebook-cell-code-header">
+                <MudIconButton Icon="@(_collapsed ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ExpandLess)"
+                               Size="Size.Small" Title="@(_collapsed ? "Развернуть" : "Свернуть")" OnClick="ToggleCollapsed" />
+            </div>
+            @if (!_collapsed)
+            {
+                <pre class="notebook-cell-code mud-typography mud-typography-body2"><code class="language-sql">@Cell.Content</code></pre>
+                <div class="notebook-cell-code-actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" Title="Rerun" OnClick="RunCell" Disabled="@_running" />
+                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Title="Copy" OnClick="@(() => CopyContent(Cell.Content))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Title="Paste to editor" OnClick="@(() => PasteToEditor(Cell.Content))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.FormatAlignLeft" Size="Size.Small" Title="Format" OnClick="@(() => FormatCell())" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Title="Delete cell" OnClick="DeleteCell" />
+                </div>
+            }
+            else
+            {
+                <div class="notebook-cell-collapsed-preview">@GetCollapsedPreview()</div>
+            }
+        </div>
+        @if (!_collapsed)
+        {
+            @if (Cell.Type == NotebookCellTypeInfo.Chart && Cell.ExecutionResult != null && !string.IsNullOrEmpty(Cell.ExecutionResult.ChartType))
+            {
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mt-2">
+                    <MudText Typo="Typo.caption">Chart type:</MudText>
+                    <MudSelect T="string" Value="@(Cell.ExecutionResult.ChartType ?? "line")" ValueChanged="(string v) => OnChartTypeChanged.InvokeAsync((Cell.Id, v))" Variant="Variant.Outlined" Dense="true" Style="max-width: 120px;">
+                        <MudSelectItem Value="@("line")">Line</MudSelectItem>
+                        <MudSelectItem Value="@("bar")">Bar</MudSelectItem>
+                        <MudSelectItem Value="@("pie")">Pie</MudSelectItem>
+                        <MudSelectItem Value="@("table")">Table</MudSelectItem>
+                    </MudSelect>
+                </MudStack>
+            }
+            <div class="notebook-cell-result-wrap" style="position: relative;">
+                @if (_running)
+                {
+                    <div class="notebook-cell-result-overlay">
+                        <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">Running…</MudText>
+                    </div>
+                }
+                @if (!string.IsNullOrWhiteSpace(_cellError))
+                {
+                    <MudAlert Severity="Severity.Error" Class="mt-2" Dismissible="true" OnClose="ClearCellError">@_cellError</MudAlert>
+                }
+                <NotebookQueryResult Result="@Cell.ExecutionResult" MaxHeight="300" />
+            </div>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public NotebookCellInfo Cell { get; set; } = null!;
+    [Parameter, EditorRequired] public Guid NotebookId { get; set; }
+    [Parameter] public int? QueryTimeoutSeconds { get; set; }
+    [Parameter] public CatalogNodeInfo? SelectedDatabase { get; set; }
+    [Parameter] public EventCallback<(int CellId, string ChartType)> OnChartTypeChanged { get; set; }
+    [Parameter] public EventCallback<(int CellId, string FormattedContent)> OnFormatCell { get; set; }
+    [Parameter] public EventCallback<NotebookCellInfo> OnDeleteCell { get; set; }
+    [Parameter] public EventCallback<string> OnInsertIntoEditor { get; set; }
+    [Parameter] public EventCallback OnCellUpdated { get; set; }
+
+    [Inject] private INotebookManager NotebookManager { get; set; } = null!;
+    [Inject] private HttpClient Http { get; set; } = null!;
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+
+    private bool _collapsed;
+    private bool _running;
+    private string? _cellError;
+    private CancellationTokenSource? _runCts;
+
+    private void ToggleCollapsed() => _collapsed = !_collapsed;
+
+    private string GetCollapsedPreview()
+    {
+        if (string.IsNullOrWhiteSpace(Cell.Content)) return "—";
+        var first = Cell.Content.TrimStart().Split('\n').FirstOrDefault()?.Trim() ?? "";
+        return first.Length > 80 ? first[..77] + "…" : first;
+    }
+
+    private int _prevCellId = -1;
+    private string? _prevContent;
+    private object? _prevExecutionResultRef;
+    private string? _prevDatabaseDisplayName;
+    private bool _prevRunning;
+    private string? _prevCellError;
+    private bool _prevCollapsed;
+
+    protected override bool ShouldRender()
+    {
+        bool cellChanged = Cell.Id != _prevCellId
+            || Cell.Content != _prevContent
+            || !ReferenceEquals(Cell.ExecutionResult, _prevExecutionResultRef)
+            || Cell.DatabaseDisplayName != _prevDatabaseDisplayName
+            || _running != _prevRunning
+            || _cellError != _prevCellError
+            || _collapsed != _prevCollapsed;
+        if (cellChanged)
+        {
+            _prevCellId = Cell.Id;
+            _prevContent = Cell.Content;
+            _prevExecutionResultRef = Cell.ExecutionResult;
+            _prevDatabaseDisplayName = Cell.DatabaseDisplayName;
+            _prevRunning = _running;
+            _prevCellError = _cellError;
+            _prevCollapsed = _collapsed;
+        }
+        return cellChanged;
+    }
+
+    private async Task RunCell()
+    {
+        if (string.IsNullOrWhiteSpace(Cell.Content) || _running) return;
+        _cellError = null;
+        _runCts?.Dispose();
+        _runCts = new CancellationTokenSource();
+        _running = true;
+        try
+        {
+            StateHasChanged();
+            var timeout = QueryTimeoutSeconds ?? 30;
+            var result = await NotebookManager.ExecuteQuery(NotebookId, Cell.Content.Trim(), _runCts.Token, timeout, Cell.CatalogNodeId ?? SelectedDatabase?.Id);
+            if (result.Status == NotebookCellExecutionStatusInfo.Failed)
+            {
+                _cellError = result.Error ?? "Execution failed.";
+                return;
+            }
+            if (Cell.Type == NotebookCellTypeInfo.Chart && !string.IsNullOrEmpty(Cell.ExecutionResult?.ChartType))
+                result.ChartType = Cell.ExecutionResult.ChartType;
+            Cell.ExecutionResult = result;
+            if (Cell.CatalogNodeId == null && SelectedDatabase != null)
+            {
+                Cell.CatalogNodeId = SelectedDatabase.Id;
+                Cell.DatabaseDisplayName = SelectedDatabase.DatabaseName ?? SelectedDatabase.Name;
+            }
+            if (OnCellUpdated.HasDelegate)
+                await OnCellUpdated.InvokeAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            _cellError = "Cancelled.";
+        }
+        catch (Exception ex)
+        {
+            _cellError = ex.Message;
+        }
+        finally
+        {
+            _running = false;
+            _runCts?.Dispose();
+            _runCts = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CopyContent(string? content)
+    {
+        if (string.IsNullOrEmpty(content)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("sqlNotebookCopyToClipboard", content);
+        }
+        catch { }
+    }
+
+    private async Task PasteToEditor(string content)
+    {
+        if (OnInsertIntoEditor.HasDelegate)
+            await OnInsertIntoEditor.InvokeAsync(content ?? "");
+    }
+
+    private async Task FormatCell()
+    {
+        if (Cell.Type != NotebookCellTypeInfo.Sql && Cell.Type != NotebookCellTypeInfo.Chart) return;
+        var formatted = SqlFormatter.Format(Cell.Content);
+        if (formatted == Cell.Content) return;
+        if (OnFormatCell.HasDelegate)
+            await OnFormatCell.InvokeAsync((Cell.Id, formatted));
+    }
+
+    private async Task DeleteCell()
+    {
+        if (OnDeleteCell.HasDelegate)
+            await OnDeleteCell.InvokeAsync(Cell);
+    }
+
+    private async Task ClearCellError()
+    {
+        _cellError = null;
+        await InvokeAsync(StateHasChanged);
+    }
+}

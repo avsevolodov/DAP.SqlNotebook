@@ -1,0 +1,240 @@
+@using System.Collections.Generic
+@using System.Linq
+@using System.Net.Http.Json
+@using System.Threading
+@using DAP.SqlNotebook.Contract.Entities
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+@implements IDisposable
+
+<div class="schema-tree pa-2">
+    <MudTextField Value="_searchInput"
+                  ValueChanged="@(EventCallback.Factory.Create<string>(this, OnSearchInputChanged))"
+                  Placeholder="Search in tree..."
+                  Variant="Variant.Outlined"
+                  Margin="Margin.Dense"
+                  Adornment="Adornment.Start"
+                  AdornmentIcon="@Icons.Material.Filled.Search"
+                  IconSize="Size.Small"
+                  Class="mb-2"
+                  Style="max-width: 100%;"
+                  Clearable="true"
+                  OnClearClick="@(EventCallback.Factory.Create(this, ClearSearch))" />
+    @if (_loading && _rootNodes.Count == 0)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Style="height: 2px;" />
+    }
+    @{
+        var visibleRoots = GetVisibleRootNodesCached();
+    }
+    @foreach (var node in visibleRoots)
+    {
+        <SchemaTreeNode @key="node.Id"
+                        Node="node"
+                        Depth="0"
+                        CatalogInsert="CatalogInsert"
+                        GetVisibleChildren="GetVisibleChildrenCached"
+                        GetFieldsFunc="GetFields"
+                        IsExpandedFunc="IsExpanded"
+                        ToggleExpand="@(EventCallback.Factory.Create(this, (CatalogNodeInfo n) => ToggleExpandAsync(n)))" />
+    }
+    @if (!_loading && _rootNodes.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary">No catalog nodes. Add sources in Schema catalog.</MudText>
+    }
+    @if (!_loading && _rootNodes.Count > 0 && visibleRoots.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary">No matches for "@_searchFilter". Expand nodes to search inside.</MudText>
+    }
+</div>
+
+@code {
+    [Parameter] public Func<Guid?, Task<List<CatalogNodeInfo>?>>? LoadNodesAsync { get; set; }
+
+    [Inject] private HttpClient Http { get; set; } = null!;
+    [Inject] private ICatalogInsertService CatalogInsert { get; set; } = null!;
+    [Inject] private ICatalogRefreshService CatalogRefresh { get; set; } = null!;
+
+    private List<CatalogNodeInfo> _rootNodes = new();
+    private readonly Dictionary<Guid, List<CatalogNodeInfo>> _loadedChildren = new();
+    private readonly Dictionary<Guid, List<DbFieldInfo>> _loadedFieldsByEntityId = new();
+    private readonly HashSet<Guid> _expanded = new();
+    private bool _loading;
+    private string _searchFilter = "";
+    private string _searchInput = "";
+    private CancellationTokenSource? _debounceCts;
+    private const int SearchDebounceMs = 200;
+
+    // Cached visible nodes (invalidated when filter or _loadedChildren change)
+    private bool _visibleCacheDirty = true;
+    private List<CatalogNodeInfo> _visibleRootNodesCache = new();
+    private Dictionary<Guid, List<CatalogNodeInfo>> _visibleChildrenCache = new();
+    private static readonly List<CatalogNodeInfo> EmptyNodeList = new();
+
+    private async Task OnSearchInputChanged(string value)
+    {
+        _searchInput = value ?? "";
+        await InvokeAsync(StateHasChanged);
+        _debounceCts?.Cancel();
+        _debounceCts = new CancellationTokenSource();
+        var ct = _debounceCts.Token;
+        try
+        {
+            await Task.Delay(SearchDebounceMs, ct);
+            _searchFilter = _searchInput;
+            InvalidateVisibleCache();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private void ClearSearch()
+    {
+        _searchInput = "";
+        _searchFilter = "";
+        InvalidateVisibleCache();
+    }
+
+    private void InvalidateVisibleCache()
+    {
+        _visibleCacheDirty = true;
+    }
+
+    private IReadOnlyList<CatalogNodeInfo> GetVisibleRootNodesCached()
+    {
+        EnsureVisibleCache();
+        return _visibleRootNodesCache;
+    }
+
+    private IReadOnlyList<CatalogNodeInfo> GetVisibleChildrenCached(Guid parentId)
+    {
+        if (string.IsNullOrWhiteSpace(_searchFilter))
+        {
+            return _loadedChildren.TryGetValue(parentId, out var c) ? c : EmptyNodeList;
+        }
+        EnsureVisibleCache();
+        return _visibleChildrenCache.TryGetValue(parentId, out var list) ? list : EmptyNodeList;
+    }
+
+    private void EnsureVisibleCache()
+    {
+        if (!_visibleCacheDirty) return;
+        _visibleCacheDirty = false;
+        if (string.IsNullOrWhiteSpace(_searchFilter))
+        {
+            _visibleRootNodesCache = _rootNodes;
+            _visibleChildrenCache = new Dictionary<Guid, List<CatalogNodeInfo>>();
+            return;
+        }
+        var filter = _searchFilter.Trim();
+        _visibleRootNodesCache = _rootNodes.Where(n => NodeOrDescendantMatches(n, filter)).ToList();
+        _visibleChildrenCache = new Dictionary<Guid, List<CatalogNodeInfo>>();
+        foreach (var kv in _loadedChildren)
+        {
+            var visible = kv.Value.Where(n => NodeOrDescendantMatches(n, filter)).ToList();
+            if (visible.Count > 0)
+                _visibleChildrenCache[kv.Key] = visible;
+        }
+    }
+
+    private bool NodeOrDescendantMatches(CatalogNodeInfo node, string filter)
+    {
+        if (node == null) return false;
+        if ((node.Name ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (!_loadedChildren.TryGetValue(node.Id, out var children))
+            return false;
+        return children.Any(c => NodeOrDescendantMatches(c, filter));
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        CatalogRefresh.OnCatalogChanged += OnCatalogChanged;
+        await LoadRootAsync();
+    }
+
+    public void Dispose()
+    {
+        CatalogRefresh.OnCatalogChanged -= OnCatalogChanged;
+    }
+
+    private async void OnCatalogChanged()
+    {
+        await InvokeAsync(LoadRootAsync);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadRootAsync()
+    {
+        _loading = true;
+        try
+        {
+            var list = await GetLoader()(null);
+            _rootNodes = list ?? new List<CatalogNodeInfo>();
+        }
+        finally
+        {
+            _loading = false;
+            InvalidateVisibleCache();
+        }
+    }
+
+    private Func<Guid?, Task<List<CatalogNodeInfo>?>> GetLoader()
+    {
+        if (LoadNodesAsync != null)
+            return LoadNodesAsync;
+        return async parentId =>
+        {
+            if (!parentId.HasValue)
+                return await Http.GetFromJsonAsync<List<CatalogNodeInfo>>("api/v1/catalog/databases");
+            return await Http.GetFromJsonAsync<List<CatalogNodeInfo>>($"api/v1/catalog/nodes?parentId={parentId.Value:N}");
+        };
+    }
+
+    private async Task ToggleExpandAsync(CatalogNodeInfo node)
+    {
+        var canExpand = node.HasChildren || node.Type == "Database" || node.Type == "Folder" || node.EntityId.HasValue;
+        if (!canExpand) return;
+        if (_expanded.Contains(node.Id))
+        {
+            _expanded.Remove(node.Id);
+            StateHasChanged();
+            return;
+        }
+        if (node.EntityId.HasValue && !_loadedFieldsByEntityId.ContainsKey(node.EntityId.Value))
+        {
+            try
+            {
+                var fields = await Http.GetFromJsonAsync<List<DbFieldInfo>>($"api/v1/catalog/entities/{node.EntityId.Value:N}/fields");
+                _loadedFieldsByEntityId[node.EntityId.Value] = fields ?? new List<DbFieldInfo>();
+            }
+            catch
+            {
+                _loadedFieldsByEntityId[node.EntityId.Value] = new List<DbFieldInfo>();
+            }
+        }
+        if (!_loadedChildren.ContainsKey(node.Id) && !node.EntityId.HasValue)
+        {
+            var list = await GetLoader()(node.Id);
+            _loadedChildren[node.Id] = list ?? new List<CatalogNodeInfo>();
+        }
+        _expanded.Add(node.Id);
+        InvalidateVisibleCache();
+        StateHasChanged();
+    }
+
+    private List<DbFieldInfo>? GetFields(Guid entityId)
+    {
+        return _loadedFieldsByEntityId.TryGetValue(entityId, out var f) ? f : null;
+    }
+
+    private List<CatalogNodeInfo>? GetChildren(Guid nodeId)
+    {
+        return _loadedChildren.TryGetValue(nodeId, out var c) ? c : null;
+    }
+
+    private bool IsExpanded(Guid nodeId)
+    {
+        return _expanded.Contains(nodeId);
+    }
+}

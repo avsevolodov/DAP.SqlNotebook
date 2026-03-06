@@ -1,0 +1,400 @@
+@using System.Net.Http.Json
+@using System.Text.Json
+@using DAP.SqlNotebook.Contract.Entities
+@using global::MudBlazor
+@using Microsoft.AspNetCore.Components.Web
+@using MudBlazor
+
+@page "/schema-catalog/entities"
+
+<PageTitle>Entities &amp; fields</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="0">
+    <MudStack Spacing="3">
+        <MudText Typo="Typo.h6">Catalog entities and fields</MudText>
+        <MudLink Href="/schema-catalog" Typo="Typo.body2">← Back to Schema catalog</MudLink>
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+            <MudText Typo="Typo.subtitle2">Database (source):</MudText>
+            <MudSelect T="Guid?" Value="_selectedSourceId"
+                      ValueChanged="OnSourceChanged"
+                      Label="Select database"
+                      Variant="Variant.Outlined"
+                      Dense="true"
+                      Style="min-width: 280px;"
+                      Clearable="true"
+                      OnClearClick="@(() => OnSourceChanged(null))">
+                @foreach (var db in _sourceNodes)
+                {
+                    <MudSelectItem T="Guid?" Value="@db.Id">@(db.DatabaseName ?? db.Name)</MudSelectItem>
+                }
+            </MudSelect>
+            @if (_selectedSourceId.HasValue)
+            {
+                <MudButton Variant="Variant.Filled" Size="Size.Small" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddEntityDialog">Add entity</MudButton>
+            }
+        </MudStack>
+
+        @if (!_selectedSourceId.HasValue)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Select a database above to view and edit its tables and views.</MudText>
+        }
+        else
+        {
+            <MudDataGrid T="DbEntityInfo"
+                         @ref="_grid"
+                         ServerData="@LoadEntitiesPage"
+                         SortMode="SortMode.None"
+                         Dense="true"
+                         Hover="true"
+                         Striped="true"
+                         LoadingProgressColor="Color.Primary"
+                         RowsPerPage="20"
+                         Class="mt-2">
+                <Columns>
+                    <TemplateColumn T="DbEntityInfo" Title="" Sortable="false" Width="48px">
+                        <CellTemplate Context="ctx">
+                            <MudIconButton Icon="@(ctx.Item.Id == _expandedEntityId ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ChevronRight)"
+                                           Size="Size.Small"
+                                           OnClick="@(() => ToggleExpand(ctx.Item))"
+                                           Title="@(ctx.Item.Id == _expandedEntityId ? "Collapse" : "Expand to load fields")" />
+                        </CellTemplate>
+                    </TemplateColumn>
+                    <PropertyColumn T="DbEntityInfo" TProperty="string" Property="x => x.Name" Title="Name" />
+                    <TemplateColumn T="DbEntityInfo" Title="Display name">
+                        <CellTemplate Context="ctx">@(ctx.Item.DisplayName ?? "—")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn T="DbEntityInfo" Title="Description">
+                        <CellTemplate Context="ctx">@(ctx.Item.Description ?? "—")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn T="DbEntityInfo" Title="Actions" Sortable="false" Width="100px">
+                        <CellTemplate Context="ctx">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditEntityDialog(ctx.Item))" Title="Edit entity" />
+                        </CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+                <PagerContent>
+                    <MudDataGridPager T="DbEntityInfo" />
+                </PagerContent>
+            </MudDataGrid>
+
+            @if (_expandedEntityId.HasValue)
+            {
+                <MudPaper Class="pa-3 mt-3" Outlined="true">
+                    <MudStack Spacing="2">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudText Typo="Typo.subtitle2">Fields for @_expandedEntityName</MudText>
+                            <MudButton Variant="Variant.Filled" Size="Size.Small" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddFieldDialog" Disabled="@(_selectedEntity == null)">Add field</MudButton>
+                        </MudStack>
+                        @if (_loadingFields)
+                        {
+                            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                        }
+                        else if (_fields.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">No fields or click + to load.</MudText>
+                        }
+                        else
+                        {
+                            <MudSimpleTable Dense="true">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Data type</th>
+                                        <th>Nullable</th>
+                                        <th>PK</th>
+                                        <th>Description</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var f in _fields)
+                                    {
+                                        <tr>
+                                            <td>@f.Name</td>
+                                            <td>@(f.DataType ?? "—")</td>
+                                            <td>@(f.IsNullable ? "Yes" : "No")</td>
+                                            <td>@(f.IsPrimaryKey ? "Yes" : "No")</td>
+                                            <td>@(f.Description ?? "—")</td>
+                                            <td>
+                                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditFieldDialog(f))" />
+                                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => DeleteField(f))" />
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </MudSimpleTable>
+                        }
+                    </MudStack>
+                </MudPaper>
+            }
+        }
+    </MudStack>
+</MudPaper>
+
+<MudDialog @bind-Visible="_showEntityDialog" Options="@(new DialogOptions { CloseOnEscapeKey = true })">
+    <TitleContent><MudText Typo="Typo.h6">@(_editingEntityId.HasValue ? "Edit entity" : "New entity")</MudText></TitleContent>
+    <DialogContent>
+        <MudStack Spacing="2" @onkeydown="OnEntityDialogKeyDown">
+            <MudTextField @bind-Value="_entityName" Label="Name" Variant="Variant.Outlined" Required />
+            <MudTextField @bind-Value="_entityDisplayName" Label="Display name" Variant="Variant.Outlined" />
+            <MudTextField @bind-Value="_entityDescription" Label="Description" Variant="Variant.Outlined" Lines="2" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseEntityDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveEntity" Disabled="@string.IsNullOrWhiteSpace(_entityName)">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="_showFieldDialog" Options="@(new DialogOptions { CloseOnEscapeKey = true })">
+    <TitleContent><MudText Typo="Typo.h6">@(_editingFieldId.HasValue ? "Edit field" : "New field")</MudText></TitleContent>
+    <DialogContent>
+        <MudStack Spacing="2" @onkeydown="OnFieldDialogKeyDown">
+            <MudTextField @bind-Value="_fieldName" Label="Name" Variant="Variant.Outlined" Required />
+            <MudTextField @bind-Value="_fieldDataType" Label="Data type" Variant="Variant.Outlined" />
+            <MudSwitch @bind-Value="_fieldIsNullable" Label="Nullable" />
+            <MudSwitch @bind-Value="_fieldIsPrimaryKey" Label="Primary key" />
+            <MudTextField @bind-Value="_fieldDescription" Label="Description" Variant="Variant.Outlined" Lines="2" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseFieldDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveField" Disabled="@string.IsNullOrWhiteSpace(_fieldName)">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Inject] private HttpClient Http { get; set; } = null!;
+
+    private MudDataGrid<DbEntityInfo>? _grid;
+    private List<CatalogNodeInfo> _sourceNodes = new();
+    private Guid? _selectedSourceId;
+    private Guid? _expandedEntityId;
+    private string _expandedEntityName = "";
+    private DbEntityInfo? _selectedEntity;
+    private List<DbFieldInfo> _fields = new();
+    private bool _loadingFields;
+    private bool _showEntityDialog;
+    private bool _showFieldDialog;
+    private Guid? _editingEntityId;
+    private string _entityName = "";
+    private string? _entityDisplayName;
+    private string? _entityDescription;
+    private Guid? _editingFieldId;
+    private string _fieldName = "";
+    private string? _fieldDataType;
+    private bool _fieldIsNullable;
+    private bool _fieldIsPrimaryKey;
+    private string? _fieldDescription;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSources();
+    }
+
+    private async Task LoadSources()
+    {
+        try
+        {
+            var list = await Http.GetFromJsonAsync<List<CatalogNodeInfo>>("api/v1/catalog/databases");
+            _sourceNodes = list ?? new();
+        }
+        catch
+        {
+            _sourceNodes = new();
+        }
+    }
+
+    private async Task OnSourceChanged(Guid? nodeId)
+    {
+        _selectedSourceId = nodeId;
+        _expandedEntityId = null;
+        _fields = new();
+        _selectedEntity = null;
+        if (_grid != null)
+            await _grid.ReloadServerData();
+    }
+
+    private async Task<GridData<DbEntityInfo>> LoadEntitiesPage(GridState<DbEntityInfo> state)
+    {
+        if (!_selectedSourceId.HasValue)
+            return new GridData<DbEntityInfo> { Items = new List<DbEntityInfo>(), TotalItems = 0 };
+        try
+        {
+            var offset = state.Page * state.PageSize;
+            var url = $"api/v1/catalog/entities?nodeId={_selectedSourceId.Value:N}&offset={offset}&count={state.PageSize}";
+            var res = await Http.GetAsync(url);
+            if (!res.IsSuccessStatusCode)
+                return new GridData<DbEntityInfo> { Items = new List<DbEntityInfo>(), TotalItems = 0 };
+            var json = await res.Content.ReadAsStringAsync();
+            var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            var items = new List<DbEntityInfo>();
+            if (root.TryGetProperty("Items", out var itemsEl) && itemsEl.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var el in itemsEl.EnumerateArray())
+                    items.Add(JsonSerializer.Deserialize<DbEntityInfo>(el.GetRawText()) ?? new DbEntityInfo());
+            }
+            var total = root.TryGetProperty("TotalCount", out var tc) ? tc.GetInt32() : items.Count;
+            return new GridData<DbEntityInfo> { Items = items, TotalItems = total };
+        }
+        catch
+        {
+            return new GridData<DbEntityInfo> { Items = new List<DbEntityInfo>(), TotalItems = 0 };
+        }
+    }
+
+    private async Task ToggleExpand(DbEntityInfo entity)
+    {
+        if (_expandedEntityId == entity.Id)
+        {
+            _expandedEntityId = null;
+            _selectedEntity = null;
+            _fields = new();
+        }
+        else
+        {
+            _expandedEntityId = entity.Id;
+            _expandedEntityName = entity.Name;
+            _selectedEntity = entity;
+            await LoadFields();
+        }
+        StateHasChanged();
+    }
+
+    private async Task LoadFields()
+    {
+        if (_selectedEntity == null) { _fields = new(); return; }
+        _loadingFields = true;
+        try
+        {
+            var list = await Http.GetFromJsonAsync<List<DbFieldInfo>>($"api/v1/catalog/entities/{_selectedEntity.Id:N}/fields");
+            _fields = list ?? new();
+        }
+        finally
+        {
+            _loadingFields = false;
+        }
+    }
+
+    private void OpenAddEntityDialog()
+    {
+        _editingEntityId = null;
+        _entityName = "";
+        _entityDisplayName = null;
+        _entityDescription = null;
+        _showEntityDialog = true;
+    }
+
+    private void OpenEditEntityDialog(DbEntityInfo entity)
+    {
+        _editingEntityId = entity.Id;
+        _entityName = entity.Name;
+        _entityDisplayName = entity.DisplayName;
+        _entityDescription = entity.Description;
+        _showEntityDialog = true;
+    }
+
+    private void CloseEntityDialog() => _showEntityDialog = false;
+
+    private async Task OnEntityDialogKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_entityName))
+            await SaveEntity();
+    }
+
+    private async Task OnFieldDialogKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_fieldName))
+            await SaveField();
+    }
+
+    private async Task SaveEntity()
+    {
+        if (string.IsNullOrWhiteSpace(_entityName)) return;
+        try
+        {
+            if (_editingEntityId.HasValue)
+            {
+                await Http.PutAsJsonAsync($"api/v1/catalog/entities/{_editingEntityId.Value:N}", new UpdateDbEntityInfo { Name = _entityName, DisplayName = _entityDisplayName, Description = _entityDescription });
+            }
+            else
+            {
+                var createRes = await Http.PostAsJsonAsync("api/v1/catalog/entities", new CreateDbEntityInfo { Name = _entityName, DisplayName = _entityDisplayName, Description = _entityDescription });
+                if (createRes.IsSuccessStatusCode && _selectedSourceId.HasValue)
+                {
+                    var created = await createRes.Content.ReadFromJsonAsync<DbEntityInfo>();
+                    if (created != null)
+                    {
+                        await Http.PostAsJsonAsync("api/v1/catalog/nodes", new CatalogNodeCreateInfo
+                        {
+                            ParentId = _selectedSourceId,
+                            Type = 2,
+                            Name = _entityName,
+                            EntityId = created.Id,
+                        });
+                    }
+                }
+            }
+            CloseEntityDialog();
+            if (_grid != null)
+                await _grid.ReloadServerData();
+        }
+        catch { }
+    }
+
+    private void OpenAddFieldDialog()
+    {
+        if (_selectedEntity == null) return;
+        _editingFieldId = null;
+        _fieldName = "";
+        _fieldDataType = null;
+        _fieldIsNullable = false;
+        _fieldIsPrimaryKey = false;
+        _fieldDescription = null;
+        _showFieldDialog = true;
+    }
+
+    private void OpenEditFieldDialog(DbFieldInfo f)
+    {
+        _editingFieldId = f.Id;
+        _fieldName = f.Name;
+        _fieldDataType = f.DataType;
+        _fieldIsNullable = f.IsNullable;
+        _fieldIsPrimaryKey = f.IsPrimaryKey;
+        _fieldDescription = f.Description;
+        _showFieldDialog = true;
+    }
+
+    private void CloseFieldDialog() => _showFieldDialog = false;
+
+    private async Task SaveField()
+    {
+        if (string.IsNullOrWhiteSpace(_fieldName) || _selectedEntity == null) return;
+        try
+        {
+            if (_editingFieldId.HasValue)
+            {
+                await Http.PutAsJsonAsync($"api/v1/catalog/fields/{_editingFieldId.Value:N}", new UpdateDbFieldInfo { Name = _fieldName, DataType = _fieldDataType, IsNullable = _fieldIsNullable, IsPrimaryKey = _fieldIsPrimaryKey, Description = _fieldDescription });
+            }
+            else
+            {
+                await Http.PostAsJsonAsync("api/v1/catalog/fields", new CreateDbFieldInfo { EntityId = _selectedEntity.Id, Name = _fieldName, DataType = _fieldDataType, IsNullable = _fieldIsNullable, IsPrimaryKey = _fieldIsPrimaryKey, Description = _fieldDescription });
+            }
+            CloseFieldDialog();
+            await LoadFields();
+        }
+        catch { }
+    }
+
+    private async Task DeleteField(DbFieldInfo f)
+    {
+        try
+        {
+            await Http.DeleteAsync($"api/v1/catalog/fields/{f.Id:N}");
+            await LoadFields();
+        }
+        catch { }
+    }
+}

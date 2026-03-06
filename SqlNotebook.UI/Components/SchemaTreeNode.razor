@@ -1,0 +1,147 @@
+@using DAP.SqlNotebook.Contract.Entities
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+
+<div class="schema-tree-node" style="@($"padding-left: {(Depth * 16) + 4}px;")">
+    @if (IsTable)
+    {
+        <MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" Open="_tableMenuOpen" OpenChanged="e => _tableMenuOpen = e">
+            <ActivatorContent>
+                <div class="schema-tree-row"
+                     style="display: flex; align-items: center; min-height: 28px; cursor: pointer;"
+                     @onclick="@(async () => { await ToggleExpand.InvokeAsync(Node); })"
+                     @onclick:stopPropagation="true"
+                     @oncontextmenu="@(e => { _tableMenuOpen = true; })"
+                     @oncontextmenu:preventDefault="true"
+                     @oncontextmenu:stopPropagation="true"
+                     @ondblclick="@(async () => { await InsertName(); })"
+                     @ondblclick:stopPropagation="true">
+                    @if (CanExpand)
+                    {
+                        <span class="material-icons schema-tree-icon" aria-hidden="true">@(IsExpanded ? "expand_more" : "chevron_right")</span>
+                    }
+                    else
+                    {
+                        <span style="width: 24px; flex-shrink: 0; display: inline-block;"></span>
+                    }
+                    <span class="material-icons schema-tree-icon" style="color: var(--mud-palette-secondary);" aria-hidden="true">table_chart</span>
+                    <span class="schema-tree-name" style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;" title="@Node.Name">@Node.Name</span>
+                </div>
+            </ActivatorContent>
+            <ChildContent>
+                <MudMenuItem OnClick="@(async () => { await InsertName(); _tableMenuOpen = false; })">Insert table name</MudMenuItem>
+                <MudMenuItem OnClick="@(async () => { await InsertPreview(); _tableMenuOpen = false; })">Preview (SELECT … LIMIT 10)</MudMenuItem>
+                <MudMenuItem OnClick="@(async () => { await InsertDescription(); _tableMenuOpen = false; })">Посмотреть описание таблицы</MudMenuItem>
+            </ChildContent>
+        </MudMenu>
+        @if (CanExpand && IsExpanded && GetFieldsFunc != null && Node.EntityId.HasValue)
+        {
+            var fields = GetFieldsFunc(Node.EntityId.Value) ?? new List<DbFieldInfo>();
+            @foreach (var f in fields)
+            {
+                <div class="schema-tree-row schema-tree-field-row"
+                     style="display: flex; align-items: center; min-height: 24px; padding-left: 24px; font-size: 0.875rem; cursor: pointer;"
+                     title="@(f.DataType ?? "") @(f.IsNullable ? "NULL" : "NOT NULL")"
+                     @onclick="@(async () => await InsertColumnNameAtCursor(f.Name))"
+                     @onclick:stopPropagation="true">
+                    <span style="width: 24px; flex-shrink: 0;"></span>
+                    <span class="material-icons schema-tree-icon" style="color: var(--mud-palette-secondary); font-size: 18px;" aria-hidden="true">view_column</span>
+                    <span class="schema-tree-name" style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;">@f.Name</span>
+                    <span style="color: var(--mud-palette-text-secondary); font-size: 0.75rem; margin-left: 4px;">@(f.DataType ?? "—")</span>
+                    @if (f.IsPrimaryKey)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Style="margin-left: 4px;">PK</MudChip>
+                    }
+                </div>
+            }
+        }
+    }
+    else
+    {
+        <div class="schema-tree-row"
+             style="display: flex; align-items: center; min-height: 28px; cursor: @(CanExpand ? "pointer" : "default");"
+             @onclick="OnRowClick">
+            @if (CanExpand)
+            {
+                <span class="material-icons schema-tree-icon" aria-hidden="true">@(IsExpanded ? "expand_more" : "chevron_right")</span>
+            }
+            else
+            {
+                <span style="width: 24px; flex-shrink: 0; display: inline-block;"></span>
+            }
+            @if (Node.Type == "Database" || Node.Type == "Source")
+            {
+                <span class="material-icons schema-tree-icon" style="color: var(--mud-palette-primary);" aria-hidden="true">storage</span>
+            }
+            else if (Node.Type == "Topic")
+            {
+                <span class="material-icons schema-tree-icon" style="color: var(--mud-palette-secondary);" aria-hidden="true">list_alt</span>
+            }
+            else
+            {
+                <span class="material-icons schema-tree-icon" aria-hidden="true">folder</span>
+            }
+            <span class="schema-tree-name" style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;" title="@Node.Name">@Node.Name</span>
+        </div>
+    }
+    @if (CanExpand && IsExpanded && Children.Count > 0)
+    {
+        @foreach (var child in Children)
+        {
+            <SchemaTreeNode @key="child.Id"
+                            Node="child"
+                            Depth="@(Depth + 1)"
+                            CatalogInsert="CatalogInsert"
+                            GetVisibleChildren="GetVisibleChildren"
+                            GetFieldsFunc="GetFieldsFunc"
+                            IsExpandedFunc="IsExpandedFunc"
+                            ToggleExpand="ToggleExpand" />
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public CatalogNodeInfo Node { get; set; } = null!;
+    [Parameter] public int Depth { get; set; }
+    [Parameter] public ICatalogInsertService? CatalogInsert { get; set; }
+    [Parameter] public Func<Guid, IReadOnlyList<CatalogNodeInfo>> GetVisibleChildren { get; set; } = null!;
+    [Parameter] public Func<Guid, List<DbFieldInfo>?>? GetFieldsFunc { get; set; }
+    [Parameter] public Func<Guid, bool> IsExpandedFunc { get; set; } = null!;
+    [Parameter] public EventCallback<CatalogNodeInfo> ToggleExpand { get; set; }
+
+    private bool _tableMenuOpen;
+    private bool IsTable => Node.EntityId.HasValue || Node.Type == "Topic";
+    private bool CanExpand => Node.HasChildren || Node.Type == "Database" || Node.Type == "Folder" || Node.EntityId.HasValue;
+    private bool IsExpanded => IsExpandedFunc?.Invoke(Node.Id) ?? false;
+    private IReadOnlyList<CatalogNodeInfo> Children => GetVisibleChildren?.Invoke(Node.Id) ?? Array.Empty<CatalogNodeInfo>();
+
+    private async Task OnRowClick(MouseEventArgs _)
+    {
+        if (CanExpand)
+            await ToggleExpand.InvokeAsync(Node);
+    }
+
+    private async Task InsertName()
+    {
+        if (CatalogInsert != null)
+            await CatalogInsert.InsertNameAsync(Node.Name);
+    }
+
+    private async Task InsertPreview()
+    {
+        if (CatalogInsert != null)
+            await CatalogInsert.InsertSelectAsync(Node);
+    }
+
+    private async Task InsertDescription()
+    {
+        if (CatalogInsert != null)
+            await CatalogInsert.InsertDescriptionAsync(Node);
+    }
+
+    private async Task InsertColumnNameAtCursor(string columnName)
+    {
+        if (CatalogInsert != null)
+            await CatalogInsert.InsertAtCursorAsync(columnName);
+    }
+}

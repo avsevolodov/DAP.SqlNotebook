@@ -1,0 +1,160 @@
+@using DAP.SqlNotebook.Contract.Entities
+@using global::MudBlazor
+@using MudBlazor
+
+@if (Result is null)
+{
+    <MudText Typo="Typo.caption" Color="Color.Secondary">No result</MudText>
+}
+else if (Result.Status == NotebookCellExecutionStatusInfo.Failed)
+{
+    <MudAlert Severity="Severity.Error" Class="mt-2">@(Result.Error ?? "Execution failed")</MudAlert>
+}
+else if (Result.Columns != null && Result.Columns.Length > 0)
+{
+    var columns = Result.Columns;
+    var chartData = GetChartData(Result);
+    var showChart = chartData != null && !string.IsNullOrEmpty(Result.ChartType) && Result.ChartType != "table";
+    if (showChart && chartData != null)
+    {
+        var chartHeight = MaxHeight > 0 ? MaxHeight + "px" : "300px";
+        <MudPaper Class="mt-2" Style="@(MaxHeight > 0 ? $"max-height:{MaxHeight}px;overflow:auto;" : "")">
+            <MudChart ChartType="@chartData.ChartType"
+                      ChartSeries="@chartData.Series"
+                      XAxisLabels="@chartData.XAxisLabels"
+                      Width="100%"
+                      Height="@chartHeight" />
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Class="mt-2" Style="@(MaxHeight > 0 ? $"max-height:{MaxHeight}px;overflow:auto;" : "")">
+            <MudTable Items="@(Result.Rows ?? Array.Empty<ExecutionResultRowInfo>())" Dense="true" Hover="true" Striped="true" Breakpoint="Breakpoint.Sm" Class="mt-0">
+                <HeaderContent>
+                    @foreach (var col in columns)
+                    {
+                        <MudTh>@col.Name</MudTh>
+                    }
+                </HeaderContent>
+                <RowTemplate Context="row">
+                    @{
+                        var values = row.Values?.ToList() ?? new List<string>();
+                    }
+                    @for (var i = 0; i < columns.Length; i++)
+                    {
+                        var cellVal = i < values.Count ? values[i] : "";
+                        <MudTd DataLabel="@columns[i].Name">@cellVal</MudTd>
+                    }
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+}
+else
+{
+    <MudText Typo="Typo.caption" Color="Color.Secondary">No data</MudText>
+}
+
+@code {
+    [Parameter] public NotebookCellExecutionResultInfo? Result { get; set; }
+    [Parameter] public int MaxHeight { get; set; }
+
+    private sealed class ChartData
+    {
+        public ChartType ChartType { get; set; }
+        public List<ChartSeries> Series { get; set; } = new();
+        public string[] XAxisLabels { get; set; } = Array.Empty<string>();
+    }
+
+    private static ChartData? GetChartData(NotebookCellExecutionResultInfo result)
+    {
+        var columns = result.Columns;
+        var rows = result.Rows;
+        if (columns == null || columns.Length == 0 || rows == null || rows.Length == 0)
+            return null;
+        var ct = (result.ChartType ?? "").Trim().ToLowerInvariant();
+        if (ct != "line" && ct != "bar" && ct != "pie")
+            return null;
+
+        var rowList = rows.Select(r => r.Values?.ToList() ?? new List<string>()).ToList();
+        var colCount = columns.Length;
+        if (colCount == 0 || rowList.Count == 0)
+            return null;
+
+        if (ct == "pie")
+        {
+            // Pie: one series. First column = labels, second (or first if numeric) = values.
+            var labels = new List<string>();
+            var values = new List<double>();
+            int valueCol = -1;
+            for (int c = 0; c < colCount; c++)
+            {
+                int numericCount = 0;
+                foreach (var row in rowList)
+                {
+                    var cell = c < (row?.Count ?? 0) ? row?[c] ?? "" : "";
+                    if (double.TryParse(cell, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _))
+                        numericCount++;
+                }
+                if (numericCount > 0 && (valueCol < 0 || numericCount > values.Count))
+                {
+                    valueCol = c;
+                    labels.Clear();
+                    values.Clear();
+                    foreach (var row in rowList)
+                    {
+                        var cell = c < (row?.Count ?? 0) ? row?[c] ?? "" : "";
+                        var label = c == 0 && colCount > 1 ? (0 < (row?.Count ?? 0) ? row?[0] ?? "" : "") : cell;
+                        if (double.TryParse(cell, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
+                        {
+                            values.Add(v);
+                            labels.Add(string.IsNullOrEmpty(label) ? cell : label);
+                        }
+                    }
+                }
+            }
+            if (valueCol < 0 || values.Count == 0)
+                return null;
+            if (labels.Count != values.Count)
+                labels = Enumerable.Range(0, values.Count).Select(i => (i + 1).ToString()).ToList();
+            return new ChartData
+            {
+                ChartType = ChartType.Pie,
+                Series = new List<ChartSeries> { new ChartSeries { Name = columns[valueCol].Name, Data = values.ToArray() } },
+                XAxisLabels = labels.ToArray()
+            };
+        }
+
+        // Line/Bar: first column = X labels, other columns = series (numeric).
+        var xLabels = new List<string>();
+        var seriesList = new List<ChartSeries>();
+        for (int c = 0; c < colCount; c++)
+        {
+            var data = new List<double>();
+            foreach (var row in rowList)
+            {
+                var cell = c < (row?.Count ?? 0) ? row?[c] ?? "" : "";
+                if (c == 0)
+                    xLabels.Add(cell);
+                if (double.TryParse(cell, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
+                    data.Add(v);
+                else
+                    data.Add(0);
+            }
+            if (c == 0 && xLabels.Count == 0)
+                xLabels.AddRange(Enumerable.Range(0, rowList.Count).Select(i => (i + 1).ToString()));
+            if (c > 0 || (colCount == 1 && data.Count > 0))
+                seriesList.Add(new ChartSeries { Name = columns[c].Name, Data = data.ToArray() });
+        }
+        if (seriesList.Count == 0)
+            return null;
+        if (xLabels.Count == 0)
+            xLabels.AddRange(Enumerable.Range(0, rowList.Count).Select(i => (i + 1).ToString()));
+        return new ChartData
+        {
+            ChartType = ct == "line" ? ChartType.Line : ChartType.Bar,
+            Series = seriesList,
+            XAxisLabels = xLabels.ToArray()
+        };
+    }
+}

@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+	  <AssemblyName>$(MSBuildProjectName)</AssemblyName>
+	  <NoWarn>$(NoWarn)</NoWarn>
+  </PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="DistributedLock.SqlServer" />
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.Negotiate" />
+		<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" />
+		<PackageReference Include="Microsoft.Data.SqlClient" />
+        <PackageReference Include="ClickHouse.Client" />
+		<PackageReference Include="Confluent.Kafka" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+		<PackageReference Include="FluentValidation" />
+		<PackageReference Include="AutoMapper" />
+	</ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SqlFormatter\SqlFormatter.csproj" />
+    <ProjectReference Include="..\SqlNotebook.BL\SqlNotebook.BL.csproj" />
+    <ProjectReference Include="..\SqlNotebook.Contract\SqlNotebook.Contract.csproj" />
+    <ProjectReference Include="..\SqlNotebook.UI\SqlNotebook.UI.csproj" />
+    <ProjectReference Include="..\Markdown\Markdown.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="ThirdParty\LaanSql\" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,292 @@
+"""API route handlers for AI SQL service."""
+from fastapi import APIRouter, HTTPException
+
+from langchain_core.prompts import ChatPromptTemplate
+
+from dto import (
+    AutocompleteSqlRequest,
+    AutocompleteSqlResponse,
+    AutocompleteSuggestionItem,
+    FindTablesRequest,
+    FindTablesResponse,
+    GenerateSqlRequest,
+    GenerateSqlResponse,
+)
+from schema_client import get_databases, get_entity_fields, get_entity_relations, get_tables, search_entities
+from schema_loader import build_schema_markdown, get_schema_object
+from schema_autocomplete import build_schema_compact_for_autocomplete
+from generate_sql_schema import build_focused_schema_for_generate_sql
+from rag_index import get_retriever
+from callbacks_console import get_console_handler
+from llm_utils import (
+    format_llm_error,
+    get_llm,
+    get_llm_autocomplete,
+    get_llm_find_tables,
+    strip_sql_markdown,
+)
+from config import autocomplete_model, find_tables_model, generate_sql_model
+
+router = APIRouter()
+
+
+@router.get("/health")
+def health() -> dict:
+    """Lightweight readiness check. LLM is initialized on first use."""
+    return {"status": "ok"}
+
+
+@router.get("/databases")
+def api_get_databases() -> list:
+    """List all catalog nodes of type Database. Proxies to backend catalog/databases."""
+    return get_databases()
+
+
+@router.get("/tables")
+def api_get_tables() -> list:
+    """List all tables (entities) with id, name, displayName, description."""
+    return get_tables()
+
+
+@router.get("/tables/{entity_id}/fields")
+def api_get_table_fields(entity_id: str) -> list:
+    """Get fields (columns) for a table."""
+    return get_entity_fields(entity_id)
+
+
+@router.get("/tables/{entity_id}/relations")
+def api_get_table_relations(entity_id: str) -> list:
+    """Get relations for a table."""
+    return get_entity_relations(entity_id)
+
+
+def _get_rag_table_retriever():
+    """Retriever over schema RAG index (for find_tables)."""
+    return get_retriever(use_separate_endpoints=True, k=15)
+
+
+@router.post("/generate-sql", response_model=GenerateSqlResponse)
+def generate_sql(body: GenerateSqlRequest) -> GenerateSqlResponse:
+    model = get_llm()
+    # Focused schema: tables from RAG (user question) + tables from previous SQL (sql_context, chat_history) + relations
+    schema_text = build_focused_schema_for_generate_sql(
+        prompt=body.prompt,
+        sql_context=body.sql_context,
+        chat_history=body.chat_history,
+        catalog_node_id=body.catalog_node_id,
+        entity=body.entity,
+        entities=body.entities,
+        retriever_k=12,
+    )
+
+    prompt_tmpl = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "You are an assistant that writes SQL Server compatible SQL queries. "
+                "User works with a logical SQL notebook. "
+                "Use ONLY the tables and columns from the provided JSON schema when possible. "
+                "When an entity focus is provided, prefer that entity as the main FROM table "
+                "and use its direct relations when needed. "
+                "Return ONLY SQL code, without any explanations or markdown.",
+            ),
+        (
+            "human",
+            "Database schema (JSON from /api/v1/schema, in markdown):\n"
+            "{schema}\n\n"
+            "Entity focus (may be empty): {entity_hint}\n\n"
+            "Use database (optional): {database_name}. If provided, start the query with USE [database_name] or use fully qualified table names.\n\n"
+            "Current SQL context (may be empty):\n"
+            "{sql_context}\n\n"
+            "{chat_history_block}"
+            "User request:\n"
+            "{question}\n\n"
+            "Write a single SQL query that best satisfies the request.",
+        ),
+        ]
+    )
+
+    try:
+        if body.entities:
+            entity_hint = "The main entities are: " + ", ".join(body.entities)
+        elif body.entity:
+            entity_hint = (
+                f"The main entity is '{body.entity}'. "
+                "Focus on this table and its direct relations."
+            )
+        else:
+            entity_hint = "(none)"
+
+        sql_context = body.sql_context or "(none)"
+        database_name = body.database_name or "(none)"
+
+        chat_history_block = ""
+        if body.chat_history:
+            lines = []
+            for t in body.chat_history[-20:]:  # last 20 turns
+                who = "User" if t.role == 0 else "Assistant"
+                text = (t.content or "").strip()
+                if text:
+                    lines.append(f"{who}: {text[:500]}" + ("..." if len(text) > 500 else ""))
+            if lines:
+                chat_history_block = "Previous conversation:\n" + "\n".join(lines) + "\n\n"
+
+        prompt = prompt_tmpl.format(
+            schema=schema_text,
+            question=body.prompt,
+            entity_hint=entity_hint,
+            database_name=database_name,
+            sql_context=sql_context,
+            chat_history_block=chat_history_block,
+        )
+        print("=== LLM REQUEST ===")
+        print(prompt)
+        print("=== END REQUEST ===")
+
+        callbacks = [get_console_handler()]
+        result = model.invoke(prompt, config={"callbacks": callbacks})
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=format_llm_error(exc, generate_sql_model())
+        ) from exc
+
+    sql_text = result.content if isinstance(result.content, str) else str(result.content)
+    sql_text = strip_sql_markdown(sql_text)
+
+    print("=== LLM RESPONSE ===")
+    print(sql_text)
+    print("=== END RESPONSE ===")
+
+    return GenerateSqlResponse(sql=sql_text.strip(), explanation=None)
+
+
+@router.post("/find-tables", response_model=FindTablesResponse)
+def find_tables(body: FindTablesRequest) -> FindTablesResponse:
+    """Find tables by user description: RAG index (vector search) + optional LLM re-rank."""
+    description = (body.description or "").strip()
+    if not description:
+        return FindTablesResponse(tables=[])
+
+    tables: list[str] = []
+    try:
+        retriever = _get_rag_table_retriever()
+        if retriever:
+            callbacks = [get_console_handler()]
+            docs = retriever.invoke(description, config={"callbacks": callbacks})
+            seen: set[str] = set()
+            for d in docs:
+                display = (d.metadata.get("displayName") or d.metadata.get("name") or "").strip()
+                if display and display.lower() not in seen:
+                    seen.add(display.lower())
+                    tables.append(display)
+            if tables:
+                return FindTablesResponse(tables=tables[:15])
+    except Exception as exc:
+        print("RAG find_tables retriever error (falling back to LLM):", exc)
+
+    if not tables:
+        model = get_llm_find_tables()
+        all_entities = search_entities("")
+        if not all_entities:
+            return FindTablesResponse(tables=[])
+        tables_block = []
+        for e in all_entities:
+            name = e.get("name") or e.get("Name") or ""
+            display = e.get("displayName") or e.get("DisplayName") or name
+            desc = (e.get("description") or e.get("Description") or "").strip()
+            line = f"- {display} (logical: {name})"
+            if desc:
+                line += f" — {desc[:200]}" + ("..." if len(desc) > 200 else "")
+            tables_block.append(line)
+        prompt_tmpl = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "You help find database tables by user description. "
+                    "Given a list of tables with optional Description, return only the table names (display name or logical name) "
+                    "most relevant to what the user is looking for. One table per line, most relevant first. No numbering, no explanation.",
+                ),
+                (
+                    "human",
+                    "User is looking for: {description}\n\nTables:\n{tables}\n\nReturn only relevant table names, one per line.",
+                ),
+            ]
+        )
+        try:
+            prompt = prompt_tmpl.format(description=description, tables="\n".join(tables_block))
+            result = model.invoke(prompt, config={"callbacks": [get_console_handler()]})
+            raw = result.content if isinstance(result.content, str) else str(result.content)
+            lines = [s.strip() for s in raw.strip().split("\n") if s.strip()]
+            seen = set()
+            tables = []
+            for line in lines:
+                name = line.split("(")[0].strip().rstrip(")")
+                if name and name.lower() not in seen:
+                    seen.add(name.lower())
+                    tables.append(name)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=format_llm_error(exc, find_tables_model()),
+            ) from exc
+
+    return FindTablesResponse(tables=tables[:15])
+
+
+@router.post("/autocomplete-sql", response_model=AutocompleteSqlResponse)
+def autocomplete_sql(body: AutocompleteSqlRequest) -> AutocompleteSqlResponse:
+    model = get_llm_autocomplete()
+    if not body.sql:
+        return AutocompleteSqlResponse(suggestions=[])
+
+    schema_obj = get_schema_object()
+    retriever = get_retriever(use_separate_endpoints=True, k=10)
+    schema_text = build_schema_compact_for_autocomplete(
+        schema_obj,
+        focus_entity_names=body.entities,
+        retriever=retriever,
+        related_k=5,
+        max_columns_per_table=15,
+    )
+    entities_hint = ", ".join(body.entities or []) or ""
+
+    sql_tail = body.sql.strip()[-500:] if len(body.sql) > 500 else body.sql.strip()
+
+    prompt_tmpl = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "SQL Server autocomplete. Reply with 2-3 short completion options. "
+                "One option per line, no numbering or bullets. Only the snippet text.",
+            ),
+            (
+                "human",
+                "Tables:\n{schema}\n\n"
+                "SQL so far:\n{sql}\n\n"
+                "Give 2-3 possible next snippets (one per line).",
+            ),
+        ]
+    )
+
+    try:
+        prompt = prompt_tmpl.format(schema=schema_text, sql=sql_tail)
+        if entities_hint:
+            prompt = prompt.replace("Tables:", f"Focus: {entities_hint}\nTables:", 1)
+        result = model.invoke(prompt, config={"callbacks": [get_console_handler()]})
+        raw = result.content if isinstance(result.content, str) else str(result.content)
+        lines = [s.strip() for s in raw.strip().split("\n") if s.strip()][:5]
+        preview_len = 52
+        suggestions = [
+            AutocompleteSuggestionItem(
+                label=(t[:preview_len] + "…" if len(t) > preview_len else t),
+                insertText=t,
+            )
+            for t in lines
+        ]
+        first = suggestions[0].insertText if suggestions else ""
+        return AutocompleteSqlResponse(suggestion=first, suggestions=suggestions)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=format_llm_error(exc, autocomplete_model()),
+        ) from exc

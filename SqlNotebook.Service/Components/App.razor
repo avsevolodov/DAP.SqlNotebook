@@ -1,0 +1,495 @@
+@using DAP.SqlNotebook.Service.Helpers
+@using DAP.SqlNotebook.UI
+@using Microsoft.AspNetCore.Components.Web
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Network map</title>
+    <base href="/" />
+    <link rel="icon" type="image/png" href="favicon.ico" />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+    <style>
+        /* Force Material Icons font for MudBlazor tree and buttons */
+        .material-icons, .mud-icon-root .material-icons { font-family: 'Material Icons'; font-weight: normal; font-style: normal; font-size: 24px; line-height: 1; display: inline-block; -webkit-font-smoothing: antialiased; }
+    </style>
+    <link href="fonts/font-sans.css" rel="stylesheet" />
+    <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
+    <link href="css/app.css" rel="stylesheet" />
+    <link href="SqlNotebook.Service.styles.css" rel="stylesheet" />
+
+    <link href="_content/MudBlazor/MudBlazor.min.css?v=@(MudBlazor.Metadata.Version)" rel="stylesheet" />
+    <link href="_content/MudBlazor.Markdown/MudBlazor.Markdown.css" rel="stylesheet" />
+    <link href="_content/SqlNotebook.Mermaid/mermaid-diagram.css" rel="stylesheet" />
+    <script src="_content/MudBlazor/MudBlazor.min.js?v=@(MudBlazor.Metadata.Version)"></script>
+    <script>
+        window.MudBlazorMarkdown = window.MudBlazorMarkdown || {
+            copyTextToClipboard: async function(text) {
+                try {
+                    if (navigator.clipboard) { await navigator.clipboard.writeText(text); return true; }
+                    return false;
+                } catch (e) { return false; }
+            },
+            scrollToElementId: function() {},
+            tableOfContents: { scrollLock: 0, handleRefs: {}, activeElementIds: {}, startScrollSpy: function() {}, stopScrollSpy: function() {} }
+        };
+    </script>
+
+    <!-- Monaco Editor (VS Code engine) for SQL -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.53.0/min/vs/loader.min.js" crossorigin="anonymous"></script>
+    <script>
+            (function () {
+                var editors = {};
+                var runCommandRegistered = {};
+                var autocompleteRegistered = false;
+                var resizeListenerAdded = false;
+                function addResizeListener() {
+                    if (resizeListenerAdded) return;
+                    resizeListenerAdded = true;
+                    window.addEventListener('resize', function () {
+                        for (var id in editors) { try { if (editors[id] && editors[id].layout) editors[id].layout(); } catch (e) {} }
+                    });
+                }
+            require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.53.0/min/vs' } });
+            window.MonacoEnvironment = {
+                getWorker: function (workerId, label) {
+                    var code = 'self.MonacoEnvironment={baseUrl:"https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.53.0/min"};importScripts("https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.53.0/min/vs/base/worker/workerMain.js");';
+                    var blob = new Blob([code], { type: 'application/javascript' });
+                    var url = URL.createObjectURL(blob);
+                    return new Worker(url, { type: 'classic' });
+                }
+            };
+            function ensureMonaco(done) {
+                if (window.monaco && window.monaco.editor) { done(); return; }
+                require(['vs/editor/editor.main'], function () {
+                    // Defer two ticks so Monaco contributions finish (avoids "Property description must be an object: undefined" on first load)
+                    setTimeout(function () { setTimeout(done, 0); }, 0);
+                });
+            }
+            function formatSqlSimple(sql) {
+                var s = (sql || '').trim().replace(/\s+/g, ' ');
+                if (!s) return s;
+                var repl = [
+                    [/\bFROM\b/gi, '\nFROM '],
+                    [/\bWHERE\b/gi, '\nWHERE '],
+                    [/\bAND\b/gi, '\n  AND '],
+                    [/\bOR\b/gi, '\n  OR '],
+                    [/\bLEFT\s+JOIN\b/gi, '\nLEFT JOIN '],
+                    [/\bRIGHT\s+JOIN\b/gi, '\nRIGHT JOIN '],
+                    [/\bINNER\s+JOIN\b/gi, '\nINNER JOIN '],
+                    [/\bJOIN\b/gi, '\nJOIN '],
+                    [/\bON\b/gi, '\n  ON '],
+                    [/\bGROUP\s+BY\b/gi, '\nGROUP BY '],
+                    [/\bORDER\s+BY\b/gi, '\nORDER BY '],
+                    [/\bHAVING\b/gi, '\nHAVING '],
+                    [/\bLIMIT\b/gi, '\nLIMIT '],
+                    [/\bOFFSET\b/gi, '\nOFFSET '],
+                    [/\bUNION\s+ALL\b/gi, '\nUNION ALL '],
+                    [/\bUNION\b/gi, '\nUNION '],
+                    [/\bVALUES\b/gi, '\nVALUES '],
+                    [/\bSET\b/gi, '\nSET ']
+                ];
+                for (var i = 0; i < repl.length; i++) {
+                    s = s.replace(repl[i][0], repl[i][1]);
+                }
+                return s.split('\n').map(function (line) { return line.trim(); }).join('\n').replace(/\n\s*\n/g, '\n').trim();
+            }
+            window.sqlNotebookMonaco = {
+                create: function (elementId, language, value) {
+                    ensureMonaco(function () {
+                        var el = document.getElementById(elementId);
+                        if (!el) return;
+                        if (editors[elementId]) editors[elementId].dispose();
+                        runCommandRegistered[elementId] = false;
+                        var theme = (window.sqlNotebookMonaco.getEditorTheme && window.sqlNotebookMonaco.getEditorTheme()) || 'vs-dark';
+                        editors[elementId] = monaco.editor.create(el, {
+                            value: value || '',
+                            language: language || 'sql',
+                            theme: theme,
+                            readOnly: false,
+                            automaticLayout: false,
+                            minimap: { enabled: false },
+                            scrollBeyondLastLine: false
+                        });
+                        addResizeListener();
+                        setTimeout(function () {
+                            if (window.sqlNotebookMonaco && window.sqlNotebookMonaco.registerAutocomplete)
+                                window.sqlNotebookMonaco.registerAutocomplete();
+                        }, 0);
+                    });
+                },
+                createAsync: function (elementId, language, value) {
+                    return new Promise(function (resolve) {
+                        ensureMonaco(function () {
+                            var el = document.getElementById(elementId);
+                            if (!el) { resolve(false); return; }
+                            var existing = editors[elementId];
+                            if (existing) {
+                                try {
+                                    var container = existing.getContainerDomNode();
+                                    if (container && container.parentNode === el) {
+                                        existing.updateOptions({ readOnly: false });
+                                        resolve(true);
+                                        return;
+                                    }
+                                    existing.dispose();
+                                } catch (e) {}
+                                editors[elementId] = null;
+                                runCommandRegistered[elementId] = false;
+                            }
+                            var theme = (window.sqlNotebookMonaco.getEditorTheme && window.sqlNotebookMonaco.getEditorTheme()) || 'vs-dark';
+                            editors[elementId] = monaco.editor.create(el, {
+                                value: value || '',
+                                language: language || 'sql',
+                                theme: theme,
+                                readOnly: false,
+                                automaticLayout: false,
+                                minimap: { enabled: false },
+                                scrollBeyondLastLine: false
+                            });
+                            el.style.pointerEvents = 'auto';
+                            el.style.userSelect = 'text';
+                            addResizeListener();
+                            requestAnimationFrame(function () { try { if (editors[elementId]) editors[elementId].layout(); } catch (e) {} });
+                            resolve(true);
+                            // Register autocomplete in next tick so it does not run in same stack as Monaco load (avoids defineProperty undefined error on first load)
+                            setTimeout(function () {
+                                if (window.sqlNotebookMonaco && window.sqlNotebookMonaco.registerAutocomplete)
+                                    window.sqlNotebookMonaco.registerAutocomplete();
+                            }, 0);
+                        });
+                    });
+                },
+                getValue: function (elementId) {
+                    var ed = editors[elementId];
+                    return ed ? (ed.getValue() || '') : '';
+                },
+                setValue: function (elementId, value) {
+                    var ed = editors[elementId];
+                    if (!ed) return;
+                    ed.setValue(value || '');
+                    ed.focus();
+                },
+                insertAtCursor: function (elementId, text) {
+                    var ed = editors[elementId];
+                    if (!ed || !text) return;
+                    var sel = ed.getSelection();
+                    if (!sel) return;
+                    var range = { startLineNumber: sel.startLineNumber, startColumn: sel.startColumn, endLineNumber: sel.endLineNumber, endColumn: sel.endColumn };
+                    ed.executeEdits('insert', [{ range: range, text: text }]);
+                    ed.focus();
+                },
+                formatDocument: function (elementId) {
+                    var ed = editors[elementId];
+                    if (!ed) return;
+                    var model = ed.getModel();
+                    if (!model) return;
+                    var text = model.getValue();
+                    if (!text || typeof text !== 'string') return;
+                    var formatted = formatSqlSimple(text);
+                    if (formatted !== text) {
+                        var r = model.getFullModelRange();
+                        var rangeObj = { startLineNumber: r.startLineNumber, startColumn: r.startColumn, endLineNumber: r.endLineNumber, endColumn: r.endColumn };
+                        ed.executeEdits('format', [{ range: rangeObj, text: formatted }]);
+                    }
+                },
+                getEditorTheme: function () {
+                    try {
+                        var t = localStorage.getItem('sqlnotebook-editor-theme');
+                        return (t && typeof t === 'string') ? t : 'vs-dark';
+                    } catch (e) { return 'vs-dark'; }
+                },
+                setEditorTheme: function (theme) {
+                    try { localStorage.setItem('sqlnotebook-editor-theme', theme || 'vs-dark'); } catch (e) {}
+                },
+                setTheme: function (elementId, theme) {
+                    window.sqlNotebookMonaco.setEditorTheme(theme);
+                    var ed = editors[elementId];
+                    if (ed && window.monaco) monaco.editor.setTheme(theme || 'vs-dark');
+                },
+                registerRunCommand: function (elementId, dotNetRef) {
+                    var ed = editors[elementId];
+                    if (!ed || !dotNetRef) return;
+                    if (runCommandRegistered[elementId]) return;
+                    ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, function () {
+                        dotNetRef.invokeMethodAsync('RunFromEditor');
+                    });
+                    runCommandRegistered[elementId] = true;
+                },
+                registerAutocomplete: function () {
+                    if (!window.monaco || autocompleteRegistered) return;
+                    monaco.languages.registerCompletionItemProvider('sql', {
+                        triggerCharacters: [' ', '.', ','],
+                        provideCompletionItems: async function (model, position) {
+                            try {
+                                var lineContent = model.getLineContent(position.lineNumber) || '';
+                                var textBeforeCursor = lineContent.substring(0, position.column - 1);
+                                var match = textBeforeCursor.match(/([\w.]+)$/);
+                                var prefix = match ? match[1] : '';
+                                var startColumn = match ? (position.column - match[1].length) : position.column;
+                                var range = new monaco.Range(position.lineNumber, startColumn, position.lineNumber, position.column);
+
+                                var sql = model.getValue() || '';
+                                var body = { sql: sql, line: position.lineNumber, column: position.column };
+                                var response = await fetch('/api/v1/schema/autocomplete', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(body)
+                                });
+                                if (!response.ok) return { suggestions: [] };
+                                var items = await response.json();
+                                if (!Array.isArray(items) || items.length === 0) return { suggestions: [] };
+                                var kindMap = { 'Keyword': monaco.languages.CompletionItemKind.Keyword, 'Table': monaco.languages.CompletionItemKind.Class, 'Column': monaco.languages.CompletionItemKind.Field };
+                                var suggestions = items.map(function (x) {
+                                    return {
+                                        label: x.label != null ? String(x.label) : '',
+                                        kind: kindMap[x.kind] || monaco.languages.CompletionItemKind.Text,
+                                        detail: x.detail != null ? String(x.detail) : '',
+                                        insertText: (x.insertText != null ? x.insertText : x.label) != null ? String(x.insertText || x.label) : '',
+                                        range: range
+                                    };
+                                });
+                                return { suggestions: suggestions };
+                            } catch (e) {
+                                return { suggestions: [] };
+                            }
+                        }
+                    });
+                    var aiAutocompleteDebounceMs = 400;
+                    var aiAutocompleteTimeoutId = null;
+                    var aiAutocompleteLastReq = null;
+                    monaco.languages.registerCompletionItemProvider('sql', {
+                        triggerCharacters: [' ', '.', ','],
+                        provideCompletionItems: async function (model, position) {
+                            var sql = model.getValue() || '';
+                            var lineContent = model.getLineContent(position.lineNumber) || '';
+                            var textBefore = lineContent.substring(0, position.column - 1);
+                            var match = textBefore.match(/([\w.]+)$/);
+                            var range = match
+                                ? new monaco.Range(position.lineNumber, position.column - match[1].length, position.lineNumber, position.column)
+                                : new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column);
+                            var entity = null;
+                            try { var u = new URL(window.location.href); entity = u.searchParams.get('entity'); } catch (e) {}
+                            var req = { sql: sql, entities: entity ? [entity] : [], range: range };
+                            return new Promise(function (resolve) {
+                                if (aiAutocompleteTimeoutId) clearTimeout(aiAutocompleteTimeoutId);
+                                aiAutocompleteLastReq = req;
+                                aiAutocompleteTimeoutId = setTimeout(async function () {
+                                    aiAutocompleteTimeoutId = null;
+                                    var r = aiAutocompleteLastReq;
+                                    if (!r) { resolve({ suggestions: [] }); return; }
+                                    try {
+                                        var res = await fetch('/api/v1/ai/sql/autocomplete', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ sql: r.sql, entities: r.entities })
+                                        });
+                                        if (!res.ok) { resolve({ suggestions: [] }); return; }
+                                        var data = await res.json();
+                                        var list = data && (data.suggestions || data.Suggestions);
+                                        if (Array.isArray(list) && list.length > 0) {
+                                            resolve({
+                                                suggestions: list.map(function (item) {
+                                                    var label = (item.label || item.Label || '').trim();
+                                                    var insert = (item.insertText || item.InsertText || label).trim();
+                                                    if (!insert) return null;
+                                                    return {
+                                                        label: label || insert.substring(0, 50),
+                                                        kind: monaco.languages.CompletionItemKind.Snippet,
+                                                        insertText: insert,
+                                                        detail: 'AI',
+                                                        range: r.range
+                                                    };
+                                                }).filter(Boolean)
+                                            });
+                                            return;
+                                        }
+                                        var single = data && (data.suggestion || data.Suggestion);
+                                        if (single && typeof single === 'string' && single.trim()) {
+                                            var t = single.trim();
+                                            resolve({
+                                                suggestions: [{ label: t.substring(0, 52) + (t.length > 52 ? '\u2026' : ''), kind: monaco.languages.CompletionItemKind.Snippet, insertText: t, detail: 'AI', range: r.range }]
+                                            });
+                                            return;
+                                        }
+                                        resolve({ suggestions: [] });
+                                    } catch (e) {
+                                        resolve({ suggestions: [] });
+                                    }
+                                }, aiAutocompleteDebounceMs);
+                            });
+                        }
+                    });
+                    autocompleteRegistered = true;
+                }
+            };
+        })();
+    </script>
+
+    <script>
+        window.sqlNotebookLayout = {
+        startResize: function (dotNetRef, side, startClientX, startWidth, minW, maxW) {
+            minW = minW != null ? minW : (side === 'right' ? 200 : 160);
+            maxW = maxW != null ? maxW : (side === 'right' ? 500 : 500);
+            var isLeft = (side === 'left' || side === 'notebookLeft' || side === 'leftWorkspaces' || side === 'leftSchema');
+            function move(e) {
+                var delta = e.clientX - startClientX;
+                var newWidth = isLeft ? startWidth + delta : startWidth - delta;
+                newWidth = Math.max(minW, Math.min(maxW, newWidth));
+                dotNetRef.invokeMethodAsync('OnResize', side, newWidth);
+            }
+                function up() {
+                    document.removeEventListener('mousemove', move);
+                    document.removeEventListener('mouseup', up);
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                }
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                document.addEventListener('mousemove', move);
+                document.addEventListener('mouseup', up);
+            }
+        };
+    </script>
+
+    <!-- highlight.js for notebook code blocks -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" crossorigin="anonymous" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js" crossorigin="anonymous"></script>
+    <script>
+        window.sqlNotebookHighlightCode = function () {
+            if (typeof hljs === 'undefined') return;
+            document.querySelectorAll('pre.notebook-cell-code code.language-sql').forEach(function (el) {
+                hljs.highlightElement(el);
+            });
+            document.querySelectorAll('.hljs code').forEach(function (el) {
+                if (!el.classList.contains('hljs')) hljs.highlightElement(el);
+            });
+        };
+        window.highlightCodeElement = function (element, text, language) {
+            if (typeof hljs === 'undefined') return;
+            try {
+                var result = language ? hljs.highlight(text, { language: language }) : hljs.highlightAuto(text);
+                element.innerHTML = result.value;
+            } catch (e) {
+                element.textContent = text;
+            }
+        };
+        window.setHighlightStylesheet = function (stylesheetPath) {
+            if (!stylesheetPath) return;
+            var codeStylesDir = 'code-styles';
+            var segment = '/Markdown/' + codeStylesDir + '/';
+            var links = document.querySelectorAll('link[rel="stylesheet"]');
+            var found = false;
+            for (var i = 0; i < links.length; i++) {
+                var href = links[i].getAttribute('href');
+                if (!href) continue;
+                var idx = href.indexOf(segment);
+                if (idx !== -1) {
+                    if (!found) {
+                        found = true;
+                        links[i].setAttribute('href', href.substring(0, idx + segment.length) + stylesheetPath);
+                    } else {
+                        links[i].remove();
+                    }
+                }
+            }
+            if (!found && (document.querySelector('link[href*="highlight"]') || document.querySelector('link[href*="hljs"]'))) {
+                return;
+            }
+            if (!found) {
+                var link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = '_content/Markdown/' + codeStylesDir + '/' + stylesheetPath;
+                document.head.appendChild(link);
+            }
+        };
+    </script>
+
+    <!-- Mermaid diagrams: loads mermaid.js and defines MermaidDiagram.run -->
+    <script src="_content/SqlNotebook.Mermaid/mermaid-diagram.js"></script>
+
+    <style>
+        #loadingIndicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 9999;
+            background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #loadingIndicator .loading-inner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            padding: 24px;
+        }
+
+        /* Linear progress bar — uses Blazor's --blazor-load-percentage (0%..100%) */
+        #loadingIndicator .loading-progress-bar {
+            width: min(90vw, 320px);
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 9999px;
+            overflow: hidden;
+        }
+
+        #loadingIndicator .loading-progress-bar-fill {
+            height: 100%;
+            width: var(--blazor-load-percentage, 0%);
+            background: #1976d2;
+            border-radius: 9999px;
+            transition: width 0.15s ease-out;
+        }
+
+        #loadingIndicator .loading-progress-text {
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            color: #424242;
+        }
+
+        #loadingIndicator .loading-progress-text::after {
+            content: var(--blazor-load-percentage-text, "Loading…");
+        }
+    </style>
+
+    <HeadOutlet @rendermode="new InteractiveWebAssemblyRenderMode(prerender: false)" />
+
+</head>
+<body style="height:100vh;">
+    <Routes @rendermode="new InteractiveWebAssemblyRenderMode(prerender: false)" />
+
+    <div id="loadingIndicator">
+        <div class="loading-inner">
+            <div class="loading-progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                <div class="loading-progress-bar-fill"></div>
+            </div>
+            <div class="loading-progress-text" id="loadingProgressText"></div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">🗙</a>
+    </div>
+
+
+    <script src="_framework/blazor.web.js" autostart="false"></script>
+    <script>
+        Blazor.start({
+            environment: "@EnvironmentHelper.GetAspnetCoreEnvironment()"
+        });
+    </script>
+</body>
+</html>

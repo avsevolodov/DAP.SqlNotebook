@@ -1,0 +1,373 @@
+@using System.Threading
+@using DAP.SqlNotebook.Contract.Entities
+@using DAP.SqlNotebook.Service.Client.Exceptions
+@using DAP.SqlNotebook.Service.Client.V1
+@using DAP.SqlNotebook.UI.Components
+@using DAP.SqlNotebook.UI.Helpers
+@using global::MudBlazor
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+@using SnackbarExtensions = DAP.SqlNotebook.UI.SnackbarExtensions
+@using MudBlazor
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+<MudPaper Class="pa-4">
+    @if (!_loading && _lastTotalCount == 0)
+    {
+        <div class="notebooks-empty-state">
+            <MudPaper Class="pa-8 text-center" Elevation="0" Outlined="true" Style="max-width: 480px; margin: 3rem auto; border-radius: 12px;">
+                <MudStack Spacing="4" AlignItems="AlignItems.Center">
+                    <MudIcon Icon="@Icons.Material.Filled.MenuBook" Size="Size.Large" Color="Color.Primary" Style="font-size: 64px; opacity: 0.9;" />
+                    <MudStack Spacing="1">
+                        <MudText Typo="Typo.h5">@(WorkspaceId.HasValue ? "В этом workspace пока нет блокнотов" : "Создайте первый notebook")</MudText>
+                        <MudText Typo="Typo.body1" Color="Color.Secondary">
+                            @(WorkspaceId.HasValue
+                                ? "Добавьте notebook, чтобы сохранять и выполнять SQL-запросы в контексте этой рабочей области."
+                                : "Выберите workspace и создайте notebook, чтобы начать работу с SQL-запросами и визуализацией данных.")
+                        </MudText>
+                    </MudStack>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="GoToNewNotebook" Class="mt-2">
+                        Создать первый notebook
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+        </div>
+    }
+    else
+    {
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="2">
+        <MudText Typo="Typo.h5">@(WorkspaceId.HasValue ? $"Notebooks in {_workspaceName}" : "Notebooks")</MudText>
+        @if (!WorkspaceId.HasValue)
+        {
+            <MudSelect T="Guid?" Label="Workspace" Value="_selectedWorkspaceId" ValueChanged="OnWorkspaceChanged"
+                       Variant="Variant.Outlined" Dense="true" Style="min-width: 200px;">
+                <MudSelectItem T="Guid?" Value="@((Guid?)null)">All</MudSelectItem>
+                @foreach (var ws in _workspaces)
+                {
+                    <MudSelectItem T="Guid?" Value="@ws.Id">@ws.Name</MudSelectItem>
+                }
+            </MudSelect>
+        }
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Reload">Reload</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="GoToNewNotebook">New notebook</MudButton>
+        @if (!WorkspaceId.HasValue)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="OpenNewWorkspaceDialog">New workspace</MudButton>
+        }
+    </MudStack>
+
+    <MudDataGrid T="NotebookMetaInfo"
+                 @ref="_grid"
+                 SortMode="SortMode.None"
+                 ServerData="@LoadNotebooks"
+                 @bind-CurrentPage:get="_page"
+                 @bind-CurrentPage:set="HandleCurrentPageChanged"
+                 RowsPerPage="_pageSize"
+                 Dense
+                 LoadingProgressColor="Color.Primary"
+                 Class="mt-8"
+                 RowClass="data-grid-row"
+                 RowsPerPageChanged="HandleRowsPerPageChanged"
+                 ShowMenuIcon
+                 Hideable
+                 ColumnsPanelReordering
+                 DragDropColumnReordering>
+        <ToolBarContent>
+            <MudTextField T="string" ValueChanged="@OnSearch"
+                          Placeholder="Search"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          Clearable="true"
+                          IconSize="Size.Medium"
+                          Class="mt-0" />
+        </ToolBarContent>
+        <Columns>
+            <PropertyColumn T="NotebookMetaInfo" TProperty="string" Property="x => x.Name" Title="Name" Sortable="true">
+                <CellTemplate>
+                    <MudLink Href="@MainRoutes.GetNotebookRoute(context.Item.Id)" @onclick:preventDefault="@false">
+                        @context.Item.Name
+                    </MudLink>
+                </CellTemplate>
+            </PropertyColumn>
+            @if (!WorkspaceId.HasValue)
+            {
+                <TemplateColumn T="NotebookMetaInfo" Title="Workspace">
+                    <CellTemplate Context="ctx">
+                        @GetWorkspaceName(ctx.Item.WorkspaceId)
+                    </CellTemplate>
+                </TemplateColumn>
+            }
+            <TemplateColumn T="NotebookMetaInfo" Title="Actions" Sortable="false" Hideable="false">
+                <CellTemplate Context="ctx">
+                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Color="Color.Default" OnClick="@(() => CloneNotebook(ctx.Item))" title="Clone notebook" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Default" OnClick="@(() => ConfirmDeleteNotebook(ctx.Item))" title="Delete notebook" />
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+        <PagerContent>
+            <MudDataGridPager T="NotebookMetaInfo" Disabled="_grid?.Loading == true" />
+        </PagerContent>
+    </MudDataGrid>
+
+    <MudDialog @bind-Visible="_showNewWorkspaceDialog" Options="@(new DialogOptions { CloseOnEscapeKey = true })">
+        <TitleContent>
+            <MudText Typo="Typo.h6">New workspace</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudTextField @bind-Value="_newWorkspaceName" Label="Name" Variant="Variant.Outlined" Class="mt-2" @onkeydown="OnNewWorkspaceKeyDown" />
+            <MudTextField @bind-Value="_newWorkspaceDescription" Label="Description" Variant="Variant.Outlined" Class="mt-2" Lines="2" @onkeydown="OnNewWorkspaceKeyDown" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="CloseNewWorkspaceDialog">Cancel</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateWorkspace">Create</MudButton>
+        </DialogActions>
+    </MudDialog>
+    }
+</MudPaper>
+
+@code {
+    [Parameter]
+    public Guid? WorkspaceId { get; set; }
+
+    [Inject]
+    INotebookManager NotebookManager { get; set; } = null!;
+
+    [Inject]
+    IWorkspaceManager WorkspaceManager { get; set; } = null!;
+
+    [SupplyParameterFromQuery]
+    public int? Page { get; set; }
+
+    [SupplyParameterFromQuery]
+    public int? PageSize { get; set; }
+
+    private string? _searchString;
+    private Guid? _selectedWorkspaceId;
+    private string _workspaceName = "";
+    private List<WorkspaceInfo> _workspaces = new();
+    private MudDataGrid<NotebookMetaInfo>? _grid;
+    private int _page;
+    private int _pageSize;
+
+    private bool _showNewWorkspaceDialog;
+    private string _newWorkspaceName = "";
+    private string? _newWorkspaceDescription;
+    private int _lastTotalCount = -1;
+    private bool _loading = true;
+
+    private string GetWorkspaceName(Guid? workspaceId)
+    {
+        if (!workspaceId.HasValue) return "—";
+        var ws = _workspaces.FirstOrDefault(w => w.Id == workspaceId.Value);
+        return ws?.Name ?? workspaceId.Value.ToString("N")[..8];
+    }
+
+    private async Task OnWorkspaceChanged(Guid? value)
+    {
+        _selectedWorkspaceId = value;
+        if (_grid != null)
+            await _grid.ReloadServerData();
+    }
+
+    private void OpenNewWorkspaceDialog()
+    {
+        _newWorkspaceName = "";
+        _newWorkspaceDescription = null;
+        _showNewWorkspaceDialog = true;
+    }
+
+    private void CloseNewWorkspaceDialog()
+    {
+        _showNewWorkspaceDialog = false;
+    }
+
+    private async Task OnNewWorkspaceKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await CreateWorkspace();
+    }
+
+    private async Task CreateWorkspace()
+    {
+        if (string.IsNullOrWhiteSpace(_newWorkspaceName))
+        {
+            SnackbarExtensions.ShowPopupMessage(Snackbar, "Enter workspace name.", Severity.Warning);
+            return;
+        }
+        try
+        {
+            var created = await WorkspaceManager.CreateWorkspace(new WorkspaceInfo
+            {
+                Name = _newWorkspaceName.Trim(),
+                Description = string.IsNullOrWhiteSpace(_newWorkspaceDescription) ? null : _newWorkspaceDescription.Trim(),
+            }, CancellationToken.None);
+            _showNewWorkspaceDialog = false;
+            _workspaces = (await WorkspaceManager.GetWorkspaces(CancellationToken.None)).ToList();
+            _selectedWorkspaceId = created.Id;
+            SnackbarExtensions.ShowPopupMessage(Snackbar, "Workspace created.", Severity.Success);
+            Navigation.NavigateTo($"/notebooks?workspaceId={created.Id:N}", forceLoad: false);
+        }
+        catch (HttpClientException<ProblemDetailsData>)
+        {
+            SnackbarExtensions.ShowPopupMessage(Snackbar, "Failed to create workspace.", Severity.Error);
+        }
+    }
+
+
+    private void HandleCurrentPageChanged(int page)
+    {
+        _page = page;
+        // NavigationManager.NavigateTo(RulesRoutes.GetCampaignsRoute(_page, _pageSize));
+    }
+
+    private void HandleRowsPerPageChanged(int pageSize)
+    {
+        _pageSize = pageSize;
+        // NavigationManagerRuleseTo(RulesRoutes.GetCampaignsRoute(_page, _pageSize));
+    }
+
+    private async Task OnSearch(string searchString)
+    {
+        _searchString = searchString;
+        if (_grid is not null)
+            await _grid.ReloadServerData();
+    }
+
+    private async Task CloneNotebook(NotebookMetaInfo item)
+    {
+        try
+        {
+            var full = await NotebookManager.GetNotebook(item.Id, CancellationToken.None);
+            if (full == null)
+            {
+                SnackbarExtensions.ShowPopupMessage(Snackbar, "Notebook not found.", Severity.Warning);
+                return;
+            }
+            var clone = new NotebookInfo
+            {
+                Id = Guid.NewGuid(),
+                Name = full.Name + " (copy)",
+                WorkspaceId = full.WorkspaceId,
+                CatalogNodeId = full.CatalogNodeId,
+                CatalogNodeDisplayName = full.CatalogNodeDisplayName,
+                Cells = full.Cells?.Select(c => new NotebookCellInfo
+                {
+                    Id = 0,
+                    Type = c.Type,
+                    Content = c.Content,
+                    ExecutionResult = c.ExecutionResult,
+                }).ToList() ?? new List<NotebookCellInfo>(),
+            };
+            var created = await NotebookManager.CreateNotebook(clone, CancellationToken.None);
+            SnackbarExtensions.ShowPopupMessage(Snackbar, "Notebook cloned.", Severity.Success);
+            if (_grid is not null)
+                await _grid.ReloadServerData();
+            Navigation.NavigateTo(MainRoutes.GetNotebookRoute(created.Id));
+        }
+        catch (Exception ex)
+        {
+            SnackbarExtensions.ShowPopupMessage(Snackbar, $"Failed to clone: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ConfirmDeleteNotebook(NotebookMetaInfo item)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Delete notebook",
+            $"Delete notebook \"{item.Name}\"? This cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+        if (confirmed != true) return;
+        try
+        {
+            await NotebookManager.DeleteNotebook(item.Id, CancellationToken.None);
+            SnackbarExtensions.ShowPopupMessage(Snackbar, "Notebook deleted.", Severity.Success);
+            if (_grid is not null)
+                await _grid.ReloadServerData();
+        }
+        catch (Exception ex)
+        {
+            SnackbarExtensions.ShowPopupMessage(Snackbar, $"Failed to delete: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task<GridData<NotebookMetaInfo>> LoadNotebooks(GridState<NotebookMetaInfo> gridState)
+    {
+        _loading = true;
+        try
+        {
+            var response = await NotebookManager.GetNotebooks(CancellationToken.None,
+                _searchString,
+                gridState.Page * gridState.PageSize,
+                gridState.PageSize,
+                _selectedWorkspaceId);
+
+            _lastTotalCount = response.TotalCount;
+            await InvokeAsync(StateHasChanged);
+
+            return new GridData<NotebookMetaInfo>
+            {
+                Items = [.. response.Notebooks],
+                TotalItems = response.TotalCount
+            };
+        }
+        catch (HttpClientException<ProblemDetailsData>)
+        {
+            SnackbarExtensions.ShowPopupMessage(Snackbar, "Failed to load notebooks.", Severity.Error);
+            _lastTotalCount = 0;
+            await InvokeAsync(StateHasChanged);
+            return new GridData<NotebookMetaInfo>
+            {
+                Items = [],
+                TotalItems = 0
+            };
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (WorkspaceId != _selectedWorkspaceId)
+        {
+            _selectedWorkspaceId = WorkspaceId;
+            if (_grid != null)
+                await _grid.ReloadServerData();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _page = Page ?? 0;
+        _pageSize = PageSize ?? 20;
+        _selectedWorkspaceId = WorkspaceId;
+        try
+        {
+            _workspaces = (await WorkspaceManager.GetWorkspaces(CancellationToken.None)).ToList();
+            if (WorkspaceId.HasValue)
+            {
+                var ws = await WorkspaceManager.GetWorkspace(WorkspaceId.Value, CancellationToken.None);
+                _workspaceName = ws?.Name ?? "";
+            }
+        }
+        catch
+        {
+            _workspaces = new List<WorkspaceInfo>();
+        }
+    }
+
+    private async Task Reload()
+    {
+        if (_grid != null)
+            await _grid.ReloadServerData();
+    }
+
+    private void GoToNewNotebook()
+    {
+        Navigation.NavigateTo(MainRoutes.GetNewNotebookRoute(WorkspaceId));
+    }
+}

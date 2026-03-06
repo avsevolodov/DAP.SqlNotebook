@@ -1,0 +1,398 @@
+@using System.Collections.Generic
+@using System.Linq
+@using System.Net.Http.Json
+@using System.Threading
+@using DAP.Markdown
+@using DAP.SqlNotebook.Contract.Entities
+@using DAP.SqlNotebook.UI.Helpers
+@using global::MudBlazor
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@implements IDisposable
+
+<div class="ai-assist-panel d-flex flex-column" style="height: 100%;">
+    <div class="pa-2 border-b d-flex align-center" style="gap: 8px;">
+        <MudText Typo="Typo.subtitle2" Class="flex-grow-1">AI Assist</MudText>
+        <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Title="New chat" OnClick="StartNewChat" />
+        <MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" Open="_sessionsMenuOpen" OpenChanged="e => _sessionsMenuOpen = e">
+            <ActivatorContent>
+                <MudIconButton Icon="@Icons.Material.Filled.History" Size="Size.Small" Title="Chat history" aria-label="Chat history" />
+            </ActivatorContent>
+            <ChildContent>
+                @if (_sessions.Count == 0 && !_loadingSessions)
+                {
+                    <MudMenuItem Disabled="true"><MudText Typo="Typo.caption">No chats yet</MudText></MudMenuItem>
+                }
+                @foreach (var s in _sessions)
+                {
+                    var session = s;
+                    <MudMenuItem OnClick="@(() => SelectSession(session))">
+                        <MudText Typo="Typo.body2">@(string.IsNullOrWhiteSpace(session.Title) ? "Chat" : session.Title)</MudText>
+                        <MudText Typo="Typo.caption" Class="ml-2">@session.CreatedAt.ToLocalTime().ToString("g")</MudText>
+                    </MudMenuItem>
+                }
+            </ChildContent>
+        </MudMenu>
+    </div>
+    @* Global chat: one panel whether or not notebook is open *@
+    <div class="@(_notebookId.HasValue ? "flex-grow-1 overflow-auto pa-2" : "pa-3 flex-grow-1 d-flex flex-column")" style="min-height: 0;">
+        @if (_loadingMessages)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Style="height: 2px;" />
+        }
+        <div class="flex-grow-1 overflow-auto mb-2" style="min-height: 80px;">
+            @foreach (var msg in _messages)
+            {
+                <div class="d-flex flex-column mb-2">
+                    @if (msg.Role == 0)
+                    {
+                        <MudPaper Class="pa-2 align-self-end ai-assist-bubble-user" Style="max-width: 90%; border-radius: 12px 12px 4px 12px;">
+                            <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@msg.Content</MudText>
+                        </MudPaper>
+                    }
+                    else
+                    {
+                        <MudPaper Class="pa-2 align-self-start ai-assist-bubble-assistant" Style="max-width: 90%; border-radius: 12px 12px 12px 4px;">
+                            @if (msg.Content?.StartsWith("Tables:", StringComparison.OrdinalIgnoreCase) == true)
+                            {
+                                var tableNames = ParseTableNamesFromMessage(msg.Content);
+                                if (tableNames.Count > 0)
+                                {
+                                    <MudStack Spacing="1">
+                                        @foreach (var tableName in tableNames)
+                                        {
+                                            <div class="d-flex align-center" style="gap: 4px;">
+                                                <MudChip T="string" Size="Size.Small" Style="cursor: default;">@tableName</MudChip>
+                                                <MudIconButton Icon="@Icons.Material.Filled.TableChart" Size="Size.Small" Title="Insert SELECT TOP into editor" OnClick="@(() => InsertTop10IntoEditor(tableName))" />
+                                            </div>
+                                        }
+                                    </MudStack>
+                                }
+                                else
+                                {
+                                    <MudMarkdown Value="@msg.Content" Props="@GetMarkdownProps()" />
+                                }
+                            }
+                            else if (!string.IsNullOrWhiteSpace(msg.Content))
+                            {
+                                <MudMarkdown Value="@msg.Content" Props="@GetMarkdownProps()" />
+                            }
+                        </MudPaper>
+                    }
+                </div>
+            }
+            @if (_sending)
+            {
+                <div class="d-flex flex-column mb-2">
+                    <MudPaper Class="pa-2 align-self-start ai-assist-bubble-assistant" Style="max-width: 90%; border-radius: 12px 12px 12px 4px;">
+                        <div class="d-flex align-center" style="gap: 8px;">
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Color="Color.Primary" Style="width: 20px; height: 20px;" />
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Thinking…</MudText>
+                        </div>
+                    </MudPaper>
+                </div>
+            }
+        </div>
+    </div>
+    <div class="pa-2 border-t">
+        @if (!_notebookId.HasValue)
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">Find tables by description (open a notebook for Generate SQL).</MudText>
+        }
+        <div class="d-flex align-center mb-2" style="gap: 8px;">
+            <MudText Typo="Typo.body2" Class="flex-grow-1">@_skillDisplayText</MudText>
+            <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Open="_skillMenuOpen" OpenChanged="e => _skillMenuOpen = e">
+                <ActivatorContent>
+                    <MudIconButton Icon="@Icons.Material.Filled.ArrowDropDown"
+                                   Size="Size.Small"
+                                   Title="Change skill"
+                                   aria-label="Change skill" />
+                </ActivatorContent>
+                <ChildContent>
+                    <MudMenuItem OnClick="@(() => SelectSkill(SkillGenerateSql))">Generate SQL</MudMenuItem>
+                    <MudMenuItem OnClick="@(() => SelectSkill(SkillFindTables))">Find tables by description</MudMenuItem>
+                </ChildContent>
+            </MudMenu>
+        </div>
+        <div class="d-flex align-center" style="gap: 8px;">
+            <MudTextField @bind-Value="_input"
+                          Label="@_inputLabel"
+                          Variant="Variant.Outlined"
+                          MultiLine="true"
+                          Rows="1"
+                          Immediate="true"
+                          Disabled="_sending"
+                          Class="flex-grow-1"
+                          Style="flex: 1 1 auto; min-width: 0;"
+                          @onkeydown="OnInputKeyDown" />
+            <MudIconButton Icon="@Icons.Material.Filled.Send"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="_sending || string.IsNullOrWhiteSpace(_input)"
+                           OnClick="SendMessage"
+                           Title="Send"
+                           Style="width: 48px; height: 48px; flex-shrink: 0;">
+                @if (_sending)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Color="Color.Inherit" />
+                }
+            </MudIconButton>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Inject] private HttpClient Http { get; set; } = null!;
+    [Inject] private ICurrentNotebookContext NotebookContext { get; set; } = null!;
+    [Inject] private IAiAssistInsertService InsertService { get; set; } = null!;
+    [Inject] private ICatalogInsertService CatalogInsertService { get; set; } = null!;
+    [Inject] private ICurrentSqlContext SqlContext { get; set; } = null!;
+    [Inject] private ICurrentDatabaseContext DatabaseContext { get; set; } = null!;
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+
+    private Guid? _notebookId;
+    private Guid? _currentSessionId;
+    private List<AiAssistSessionInfo> _sessions = new();
+    private List<AiAssistMessageInfo> _messages = new();
+    private string _input = "";
+    private string _selectedSkill = SkillGenerateSql;
+    private bool _skillMenuOpen;
+    private bool _sessionsMenuOpen;
+    private string _skillDisplayText => _selectedSkill == SkillFindTables ? "Find tables by description" : "Generate SQL";
+    private string _inputLabel => _selectedSkill == SkillFindTables ? "Describe what you need (tables)..." : "Ask for SQL...";
+    private bool _loadingMessages;
+    private bool _loadingSessions;
+    private bool _sending;
+    private MudMarkdownProps? _cachedMarkdownProps;
+
+    private const string SkillGenerateSql = "GenerateSql";
+    private const string SkillFindTables = "FindTables";
+
+    private void SelectSkill(string value)
+    {
+        _selectedSkill = value;
+        _skillMenuOpen = false;
+    }
+
+    protected override void OnInitialized()
+    {
+        _notebookId = NotebookContext.NotebookId;
+        NotebookContext.NotebookIdChanged += OnNotebookIdChanged;
+    }
+
+    public void Dispose()
+    {
+        NotebookContext.NotebookIdChanged -= OnNotebookIdChanged;
+    }
+
+    private async void OnNotebookIdChanged()
+    {
+        _notebookId = NotebookContext.NotebookId;
+        await LoadSessionsAsync();
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadSessionsAsync();
+            await LoadMessagesAsync();
+        }
+    }
+
+    private async Task LoadSessionsAsync()
+    {
+        _loadingSessions = true;
+        try
+        {
+            var url = _notebookId.HasValue
+                ? $"api/v1/ai/assist/sessions?notebookId={_notebookId.Value:N}"
+                : "api/v1/ai/assist/sessions";
+            var list = await Http.GetFromJsonAsync<List<AiAssistSessionInfo>>(url, CancellationToken.None);
+            _sessions = list ?? new List<AiAssistSessionInfo>();
+        }
+        finally
+        {
+            _loadingSessions = false;
+        }
+        StateHasChanged();
+    }
+
+    private async Task LoadMessagesAsync()
+    {
+        _loadingMessages = true;
+        try
+        {
+            var url = _currentSessionId.HasValue
+                ? $"api/v1/ai/assist/messages?sessionId={_currentSessionId.Value:N}"
+                : "api/v1/ai/assist/messages";
+            var list = await Http.GetFromJsonAsync<List<AiAssistMessageInfo>>(url, CancellationToken.None);
+            _messages = list ?? new List<AiAssistMessageInfo>();
+        }
+        finally
+        {
+            _loadingMessages = false;
+        }
+        StateHasChanged();
+    }
+
+    private async Task StartNewChat()
+    {
+        _sessionsMenuOpen = false;
+        try
+        {
+            var res = await Http.PostAsJsonAsync("api/v1/ai/assist/sessions", new AiAssistSessionInfo { Title = "New chat", NotebookId = _notebookId }, CancellationToken.None);
+            if (res.IsSuccessStatusCode)
+            {
+                var session = await res.Content.ReadFromJsonAsync<AiAssistSessionInfo>(CancellationToken.None);
+                if (session != null)
+                {
+                    _currentSessionId = session.Id;
+                    _messages = new List<AiAssistMessageInfo>();
+                    await LoadSessionsAsync();
+                    StateHasChanged();
+                }
+            }
+        }
+        catch { }
+    }
+
+    private async Task SelectSession(AiAssistSessionInfo session)
+    {
+        _sessionsMenuOpen = false;
+        _currentSessionId = session.Id;
+        await LoadMessagesAsync();
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_input)) return;
+        var content = _input.Trim();
+        _input = "";
+        var chatHistory = _messages
+            .Select(m => new AiAssistChatTurnInfo { Role = m.Role, Content = m.Content })
+            .TakeLast(20)
+            .ToList();
+        _messages.Add(new AiAssistMessageInfo
+        {
+            Id = Guid.Empty,
+            NotebookId = _notebookId ?? Guid.Empty,
+            Content = content,
+            Role = 0,
+            CreatedAt = DateTime.UtcNow
+        });
+        _sending = true;
+        StateHasChanged();
+        await Task.Yield();
+        try
+        {
+            var request = new AiAssistSendRequestInfo
+            {
+                NotebookId = _notebookId ?? Guid.Empty,
+                Content = content,
+                SqlContext = _notebookId.HasValue ? SqlContext.CurrentSql : null,
+                DatabaseName = DatabaseContext.SelectedDatabase?.DatabaseName,
+                CatalogNodeId = DatabaseContext.SelectedDatabase?.Id,
+                Skill = _selectedSkill,
+                SessionId = _currentSessionId,
+                ChatHistory = chatHistory.Count > 0 ? chatHistory : null,
+            };
+            var response = await Http.PostAsJsonAsync("api/v1/ai/assist/send", request, CancellationToken.None);
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<AiAssistSendResponseInfo>(CancellationToken.None);
+                if (result?.Message != null)
+                    _messages.Add(result.Message);
+                if (result?.SessionId != null)
+                    _currentSessionId = result.SessionId;
+            }
+            else
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(CancellationToken.None);
+                _messages.Add(new AiAssistMessageInfo
+                {
+                    Id = Guid.Empty,
+                    NotebookId = _notebookId ?? Guid.Empty,
+                    Content = string.IsNullOrWhiteSpace(errorBody) ? $"Error {(int)response.StatusCode}." : errorBody,
+                    Role = 1,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+        }
+        finally
+        {
+            _sending = false;
+            StateHasChanged();
+        }
+    }
+
+    private void InsertSql(string sql)
+    {
+        InsertService.InsertIntoEditor(sql);
+    }
+
+    private static List<string> ParseTableNamesFromMessage(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return new List<string>();
+        var prefix = "Tables:";
+        var idx = content.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return new List<string>();
+        var rest = content[(idx + prefix.Length)..].Trim();
+        return rest.Split(',').Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
+    }
+
+    private void InsertTop10IntoEditor(string tableName)
+    {
+        var top = Math.Clamp(CatalogInsertService.SelectTopCount, 1, 10000);
+        var db = DatabaseContext.SelectedDatabase?.DatabaseName;
+        var sql = string.IsNullOrWhiteSpace(db)
+            ? $"SELECT TOP {top} * FROM [{tableName}]"
+            : $"USE [{db}];\nSELECT TOP {top} * FROM [{tableName}]";
+        InsertService.InsertIntoEditor(sql);
+    }
+
+    private async Task CopyToClipboard(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("sqlNotebookCopyToClipboard", text);
+        }
+        catch { }
+    }
+
+    private void PasteToEditor(string content)
+    {
+        InsertSql(content ?? "");
+    }
+
+    private void RunSqlFromMarkdown(string sql)
+    {
+        InsertSql(sql ?? "");
+    }
+
+    private MudMarkdownProps GetMarkdownProps()
+    {
+        if (_cachedMarkdownProps != null)
+            return _cachedMarkdownProps;
+        _cachedMarkdownProps = new MudMarkdownProps();
+        _cachedMarkdownProps.CodeBlock.CustomButtons = (code, language) => builder =>
+        {
+            var seq = 0;
+            builder.OpenComponent<MarkdownCodeBlockButtons>(seq++);
+            builder.AddAttribute(seq++, nameof(MarkdownCodeBlockButtons.Code), code);
+            builder.AddAttribute(seq++, nameof(MarkdownCodeBlockButtons.Language), language);
+            builder.AddAttribute(seq++, nameof(MarkdownCodeBlockButtons.OnRunSql), EventCallback.Factory.Create<string>(this, RunSqlFromMarkdown));
+            builder.AddAttribute(seq++, nameof(MarkdownCodeBlockButtons.OnPasteToEditor), EventCallback.Factory.Create<string>(this, PasteToEditor));
+            builder.CloseComponent();
+        };
+        return _cachedMarkdownProps;
+    }
+
+    private async Task OnInputKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+            await SendMessage();
+    }
+}

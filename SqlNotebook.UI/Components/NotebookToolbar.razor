@@ -1,0 +1,69 @@
+@namespace DAP.SqlNotebook.UI.Components
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+@implements IDisposable
+
+@if (_service.HasActions)
+{
+    <div class="pa-2 border-b" style="flex-shrink: 0;">
+        <MudStack Spacing="2">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Editor</MudText>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Wrap="Wrap.Wrap">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" OnClick="RunAsync" StartIcon="@Icons.Material.Filled.PlayArrow">Run</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" OnClick="RunAsChartAsync" StartIcon="@Icons.Material.Filled.BarChart">Chart</MudButton>
+                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="AddMarkdownAsync" StartIcon="@Icons.Material.Filled.TextFields">Markdown</MudButton>
+                <MudNumericField T="int?" Value="_timeoutLocal" ValueChanged="OnTimeoutChanged" Label="Timeout (s)" Min="1" Max="300" Variant="Variant.Outlined" Dense="true" Style="max-width: 80px;" Adornment="Adornment.End" />
+            </MudStack>
+        </MudStack>
+    </div>
+}
+
+@code {
+    [Inject] private INotebookToolbarService _service { get; set; } = null!;
+
+    private int? _timeoutLocal;
+
+    protected override void OnInitialized()
+    {
+        _service.Changed += OnServiceChanged;
+        _timeoutLocal = _service.TimeoutSeconds;
+    }
+
+    public void Dispose()
+    {
+        _service.Changed -= OnServiceChanged;
+    }
+
+    private void OnServiceChanged()
+    {
+        _timeoutLocal = _service.TimeoutSeconds;
+        InvokeAsync(StateHasChanged);
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (_service.HasActions && _timeoutLocal != _service.TimeoutSeconds)
+            _timeoutLocal = _service.TimeoutSeconds;
+    }
+
+    private async Task RunAsync()
+    {
+        await _service.RunAsync();
+    }
+
+    private async Task RunAsChartAsync()
+    {
+        await _service.RunAsChartAsync();
+    }
+
+    private async Task AddMarkdownAsync()
+    {
+        await _service.AddMarkdownAsync();
+    }
+
+    private async Task OnTimeoutChanged(int? value)
+    {
+        _timeoutLocal = value;
+        await _service.SetTimeoutAsync(value);
+    }
+}

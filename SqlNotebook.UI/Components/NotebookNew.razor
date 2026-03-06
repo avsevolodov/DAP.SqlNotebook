@@ -1,0 +1,68 @@
+@namespace DAP.SqlNotebook.UI.Components
+@using System.Collections.Generic
+@using System.Linq
+@using DAP.SqlNotebook.Contract.Entities
+@using Microsoft.AspNetCore.Components.Web
+@using MudBlazor
+
+<MudStack Spacing="3" Style="max-width: 420px;">
+    <MudTextField T="string"
+                 Value="@Name"
+                 ValueChanged="HandleNameChanged"
+                 Label="Название notebook"
+                 Variant="Variant.Outlined"
+                 Immediate="true"
+                 @onkeydown="OnKeyDown" />
+    @if (Databases != null && Databases.Count > 0)
+    {
+        <MudSelect T="CatalogNodeInfo?"
+                   Label="База данных (схема)"
+                   Variant="Variant.Outlined"
+                   Value="@SelectedDatabase"
+                   ValueChanged="HandleDatabaseChanged"
+                   ToStringFunc="@(n => n != null ? (n.DatabaseName ?? n.Name ?? "—") : "—")">
+            <MudSelectItem T="CatalogNodeInfo?" Value="@_nullDatabase">— не выбрана —</MudSelectItem>
+            @foreach (var db in Databases)
+            {
+                <MudSelectItem T="CatalogNodeInfo?" Value="@db">@(db.DatabaseName ?? db.Name ?? "—")</MudSelectItem>
+            }
+        </MudSelect>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">С этой БД будет работать notebook по умолчанию.</MudText>
+    }
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleCreate">Создать</MudButton>
+</MudStack>
+
+@code {
+    private static readonly CatalogNodeInfo? _nullDatabase = null;
+
+    [Parameter] public string Name { get; set; } = "";
+    [Parameter] public EventCallback<string> NameChanged { get; set; }
+    [Parameter] public List<CatalogNodeInfo>? Databases { get; set; }
+    [Parameter] public CatalogNodeInfo? SelectedDatabase { get; set; }
+    [Parameter] public EventCallback<CatalogNodeInfo?> SelectedDatabaseChanged { get; set; }
+    [Parameter] public EventCallback<string> OnCreate { get; set; }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+            await HandleCreate();
+    }
+
+    private async Task HandleNameChanged(string value)
+    {
+        if (NameChanged.HasDelegate)
+            await NameChanged.InvokeAsync(value);
+    }
+
+    private async Task HandleDatabaseChanged(CatalogNodeInfo? value)
+    {
+        if (SelectedDatabaseChanged.HasDelegate)
+            await SelectedDatabaseChanged.InvokeAsync(value);
+    }
+
+    private async Task HandleCreate()
+    {
+        if (OnCreate.HasDelegate)
+            await OnCreate.InvokeAsync(Name ?? "");
+    }
+}

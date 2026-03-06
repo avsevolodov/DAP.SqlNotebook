@@ -1,0 +1,15 @@
+<div class="nav-link-container d-flex align-center mud-ripple">
+    <NavLink href="@Href" class="nav-link pr-8 pl-8">
+        <MudText Typo="Typo.body1">@ChildContent</MudText>
+    </NavLink>
+</div>
+
+@code {
+
+    [Parameter]
+    public string Href { get; set; } = "";
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+}

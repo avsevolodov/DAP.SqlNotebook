@@ -1,0 +1,17 @@
+.nav-link-container ::deep .nav-link {
+    display: flex;
+    height: 100%;
+    align-items: center;
+    color: rgba(255, 255, 255, 0.95);
+    text-decoration: none;
+}
+
+.nav-link-container ::deep .nav-link:hover {
+    color: #fff;
+}
+
+.nav-link-container ::deep .active {
+    color: #fff;
+    font-weight: 600;
+    border-bottom: 3px solid rgba(255, 255, 255, 0.9);
+}
