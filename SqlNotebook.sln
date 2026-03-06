@@ -11,6 +11,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		Directory.Packages.props = Directory.Packages.props
 		nuget.config = nuget.config
 		.gitignore = .gitignore
+		sql\migrations\001_full_schema.sql = sql\migrations\001_full_schema.sql
+		sql\migrations\002_kafka_consumer_group.sql = sql\migrations\002_kafka_consumer_group.sql
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlNotebook.Contract", "SqlNotebook.Contract\SqlNotebook.Contract.csproj", "{5D7E01DD-8BD0-4B18-AEC1-F41469A84E9F}"
