@@ -158,6 +158,8 @@ public class CatalogRepository : ICatalogRepository
             AuthType = n.AuthType,
             Login = n.Login,
             PasswordEncrypted = n.PasswordEncrypted,
+            ConsumerGroupPrefix = n.ConsumerGroupPrefix,
+            ConsumerGroupAutoGenerate = n.ConsumerGroupAutoGenerate,
             HasChildren = hasChildren,
             EntityId = n.EntityId,
             QualifiedName = qualifiedName,
@@ -180,6 +182,8 @@ public class CatalogRepository : ICatalogRepository
             AuthType = create.AuthType?.Trim(),
             Login = create.Login?.Trim(),
             PasswordEncrypted = create.PasswordEncrypted,
+            ConsumerGroupPrefix = create.ConsumerGroupPrefix?.Trim(),
+            ConsumerGroupAutoGenerate = create.ConsumerGroupAutoGenerate,
             SortOrder = 0,
             EntityId = create.EntityId,
         };
@@ -201,6 +205,8 @@ public class CatalogRepository : ICatalogRepository
         if (update.AuthType != null) node.AuthType = update.AuthType.Trim();
         if (update.Login != null) node.Login = update.Login.Trim();
         if (update.PasswordEncrypted != null) node.PasswordEncrypted = update.PasswordEncrypted;
+        if (update.ConsumerGroupPrefix != null) node.ConsumerGroupPrefix = update.ConsumerGroupPrefix.Trim();
+        if (update.ConsumerGroupAutoGenerate.HasValue) node.ConsumerGroupAutoGenerate = update.ConsumerGroupAutoGenerate.Value;
         if (update.AuthType != null && !string.Equals(update.AuthType.Trim(), "Basic", StringComparison.OrdinalIgnoreCase))
             node.PasswordEncrypted = null;
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);

@@ -1,8 +1,12 @@
 """API route handlers for AI SQL service."""
-from fastapi import APIRouter, HTTPException
+import logging
+from typing import Any
 
+from fastapi import APIRouter, HTTPException
 from langchain_core.prompts import ChatPromptTemplate
 
+from callbacks_console import get_console_handler
+from config import autocomplete_model, find_tables_model, generate_sql_model
 from dto import (
     AutocompleteSqlRequest,
     AutocompleteSqlResponse,
@@ -12,12 +16,7 @@ from dto import (
     GenerateSqlRequest,
     GenerateSqlResponse,
 )
-from schema_client import get_databases, get_entity_fields, get_entity_relations, get_tables, search_entities
-from schema_loader import build_schema_markdown, get_schema_object
-from schema_autocomplete import build_schema_compact_for_autocomplete
 from generate_sql_schema import build_focused_schema_for_generate_sql
-from rag_index import get_retriever
-from callbacks_console import get_console_handler
 from llm_utils import (
     format_llm_error,
     get_llm,
@@ -25,44 +24,67 @@ from llm_utils import (
     get_llm_find_tables,
     strip_sql_markdown,
 )
-from config import autocomplete_model, find_tables_model, generate_sql_model
+from rag_index import get_retriever
+from schema_autocomplete import build_schema_compact_for_autocomplete
+from schema_client import (
+    get_databases,
+    get_entity_fields,
+    get_entity_relations,
+    get_tables,
+    search_entities,
+)
+from schema_loader import build_schema_markdown, get_schema_object
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Prompt/response limits (single responsibility, avoid magic numbers)
+MAX_CHAT_TURNS_IN_PROMPT = 20
+MAX_SNIPPET_LENGTH = 500
+MAX_FIND_TABLES_RESULT = 15
+AUTOCOMPLETE_PREVIEW_LENGTH = 52
+RAG_RETRIEVER_K_FIND_TABLES = 15
+RAG_RETRIEVER_K_AUTOCOMPLETE = 10
+RAG_RELATED_K_AUTOCOMPLETE = 5
+FOCUSED_SCHEMA_RETRIEVER_K = 12
+MAX_COLUMNS_PER_TABLE_AUTOCOMPLETE = 15
+MAX_AUTOCOMPLETE_SUGGESTIONS = 5
+MAX_TABLE_DESC_PREVIEW_CHARS = 200
 
 
 @router.get("/health")
-def health() -> dict:
+def health() -> dict[str, str]:
     """Lightweight readiness check. LLM is initialized on first use."""
     return {"status": "ok"}
 
 
 @router.get("/databases")
-def api_get_databases() -> list:
+def api_get_databases() -> list[dict[str, Any]]:
     """List all catalog nodes of type Database. Proxies to backend catalog/databases."""
     return get_databases()
 
 
 @router.get("/tables")
-def api_get_tables() -> list:
+def api_get_tables() -> list[dict[str, Any]]:
     """List all tables (entities) with id, name, displayName, description."""
     return get_tables()
 
 
 @router.get("/tables/{entity_id}/fields")
-def api_get_table_fields(entity_id: str) -> list:
+def api_get_table_fields(entity_id: str) -> list[dict[str, Any]]:
     """Get fields (columns) for a table."""
     return get_entity_fields(entity_id)
 
 
 @router.get("/tables/{entity_id}/relations")
-def api_get_table_relations(entity_id: str) -> list:
+def api_get_table_relations(entity_id: str) -> list[dict[str, Any]]:
     """Get relations for a table."""
     return get_entity_relations(entity_id)
 
 
 def _get_rag_table_retriever():
     """Retriever over schema RAG index (for find_tables)."""
-    return get_retriever(use_separate_endpoints=True, k=15)
+    return get_retriever(use_separate_endpoints=True, k=RAG_RETRIEVER_K_FIND_TABLES)
 
 
 @router.post("/generate-sql", response_model=GenerateSqlResponse)
@@ -76,7 +98,7 @@ def generate_sql(body: GenerateSqlRequest) -> GenerateSqlResponse:
         catalog_node_id=body.catalog_node_id,
         entity=body.entity,
         entities=body.entities,
-        retriever_k=12,
+        retriever_k=FOCUSED_SCHEMA_RETRIEVER_K,
     )
 
     prompt_tmpl = ChatPromptTemplate.from_messages(
@@ -123,11 +145,13 @@ def generate_sql(body: GenerateSqlRequest) -> GenerateSqlResponse:
         chat_history_block = ""
         if body.chat_history:
             lines = []
-            for t in body.chat_history[-20:]:  # last 20 turns
+            for t in body.chat_history[-MAX_CHAT_TURNS_IN_PROMPT:]:
                 who = "User" if t.role == 0 else "Assistant"
                 text = (t.content or "").strip()
                 if text:
-                    lines.append(f"{who}: {text[:500]}" + ("..." if len(text) > 500 else ""))
+                    trunc = text[:MAX_SNIPPET_LENGTH]
+                    suffix = "..." if len(text) > MAX_SNIPPET_LENGTH else ""
+                    lines.append(f"{who}: {trunc}{suffix}")
             if lines:
                 chat_history_block = "Previous conversation:\n" + "\n".join(lines) + "\n\n"
 
@@ -139,9 +163,7 @@ def generate_sql(body: GenerateSqlRequest) -> GenerateSqlResponse:
             sql_context=sql_context,
             chat_history_block=chat_history_block,
         )
-        print("=== LLM REQUEST ===")
-        print(prompt)
-        print("=== END REQUEST ===")
+        logger.debug("LLM request length=%d", len(prompt))
 
         callbacks = [get_console_handler()]
         result = model.invoke(prompt, config={"callbacks": callbacks})
@@ -152,10 +174,7 @@ def generate_sql(body: GenerateSqlRequest) -> GenerateSqlResponse:
 
     sql_text = result.content if isinstance(result.content, str) else str(result.content)
     sql_text = strip_sql_markdown(sql_text)
-
-    print("=== LLM RESPONSE ===")
-    print(sql_text)
-    print("=== END RESPONSE ===")
+    logger.debug("LLM response length=%d", len(sql_text))
 
     return GenerateSqlResponse(sql=sql_text.strip(), explanation=None)
 
@@ -180,9 +199,9 @@ def find_tables(body: FindTablesRequest) -> FindTablesResponse:
                     seen.add(display.lower())
                     tables.append(display)
             if tables:
-                return FindTablesResponse(tables=tables[:15])
+                return FindTablesResponse(tables=tables[:MAX_FIND_TABLES_RESULT])
     except Exception as exc:
-        print("RAG find_tables retriever error (falling back to LLM):", exc)
+        logger.warning("RAG find_tables retriever error (falling back to LLM): %s", exc)
 
     if not tables:
         model = get_llm_find_tables()
@@ -196,7 +215,11 @@ def find_tables(body: FindTablesRequest) -> FindTablesResponse:
             desc = (e.get("description") or e.get("Description") or "").strip()
             line = f"- {display} (logical: {name})"
             if desc:
-                line += f" — {desc[:200]}" + ("..." if len(desc) > 200 else "")
+                desc_preview = desc[:MAX_TABLE_DESC_PREVIEW_CHARS]
+                line += (
+                    f" — {desc_preview}"
+                    + ("..." if len(desc) > MAX_TABLE_DESC_PREVIEW_CHARS else "")
+                )
             tables_block.append(line)
         prompt_tmpl = ChatPromptTemplate.from_messages(
             [
@@ -230,7 +253,7 @@ def find_tables(body: FindTablesRequest) -> FindTablesResponse:
                 detail=format_llm_error(exc, find_tables_model()),
             ) from exc
 
-    return FindTablesResponse(tables=tables[:15])
+    return FindTablesResponse(tables=tables[:MAX_FIND_TABLES_RESULT])
 
 
 @router.post("/autocomplete-sql", response_model=AutocompleteSqlResponse)
@@ -240,17 +263,21 @@ def autocomplete_sql(body: AutocompleteSqlRequest) -> AutocompleteSqlResponse:
         return AutocompleteSqlResponse(suggestions=[])
 
     schema_obj = get_schema_object()
-    retriever = get_retriever(use_separate_endpoints=True, k=10)
+    retriever = get_retriever(use_separate_endpoints=True, k=RAG_RETRIEVER_K_AUTOCOMPLETE)
     schema_text = build_schema_compact_for_autocomplete(
         schema_obj,
         focus_entity_names=body.entities,
         retriever=retriever,
-        related_k=5,
-        max_columns_per_table=15,
+        related_k=RAG_RELATED_K_AUTOCOMPLETE,
+        max_columns_per_table=MAX_COLUMNS_PER_TABLE_AUTOCOMPLETE,
     )
     entities_hint = ", ".join(body.entities or []) or ""
 
-    sql_tail = body.sql.strip()[-500:] if len(body.sql) > 500 else body.sql.strip()
+    sql_tail = (
+        body.sql.strip()[-MAX_SNIPPET_LENGTH:]
+        if len(body.sql) > MAX_SNIPPET_LENGTH
+        else body.sql.strip()
+    )
 
     prompt_tmpl = ChatPromptTemplate.from_messages(
         [
@@ -274,11 +301,18 @@ def autocomplete_sql(body: AutocompleteSqlRequest) -> AutocompleteSqlResponse:
             prompt = prompt.replace("Tables:", f"Focus: {entities_hint}\nTables:", 1)
         result = model.invoke(prompt, config={"callbacks": [get_console_handler()]})
         raw = result.content if isinstance(result.content, str) else str(result.content)
-        lines = [s.strip() for s in raw.strip().split("\n") if s.strip()][:5]
-        preview_len = 52
+        lines = [
+            s.strip()
+            for s in raw.strip().split("\n")
+            if s.strip()
+        ][:MAX_AUTOCOMPLETE_SUGGESTIONS]
         suggestions = [
             AutocompleteSuggestionItem(
-                label=(t[:preview_len] + "…" if len(t) > preview_len else t),
+                label=(
+                    t[:AUTOCOMPLETE_PREVIEW_LENGTH] + "…"
+                    if len(t) > AUTOCOMPLETE_PREVIEW_LENGTH
+                    else t
+                ),
                 insertText=t,
             )
             for t in lines

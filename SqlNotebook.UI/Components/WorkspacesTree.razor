@@ -8,6 +8,11 @@
 @using MudBlazor
 
 <div class="workspaces-tree pa-2">
+    <div class="workspaces-tree-row" style="padding-left: 4px; cursor: default;">
+        <span style="width: 24px; flex-shrink: 0; display: inline-block;"></span>
+        <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-primary);" aria-hidden="true">workspaces</span>
+        <span class="workspaces-tree-name" style="font-weight: 600;">My workspaces</span>
+    </div>
     @if (_loading && _workspaces.Count == 0)
     {
         <MudProgressLinear Color="Color.Primary" Indeterminate="true" Style="height: 2px;" />
@@ -17,7 +22,7 @@
         var expanded = _expandedWorkspaces.Contains(ws.Id);
         <div class="workspaces-tree-node">
             <div class="workspaces-tree-row"
-                 style="padding-left: 4px;"
+                 style="padding-left: 24px;"
                  @onclick="@(() => ToggleWorkspace(ws.Id))">
                 <span class="material-icons workspaces-tree-icon" aria-hidden="true">@(expanded ? "expand_more" : "chevron_right")</span>
                 <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-primary);" aria-hidden="true">folder</span>
@@ -37,14 +42,14 @@
                         @foreach (var nb in notebooks)
                         {
                             <div class="workspaces-tree-row workspaces-tree-notebook"
-                                 style="padding-left: 28px; min-height: 28px;">
+                                 style="padding-left: 48px; min-height: 28px;">
                                 <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-secondary); font-size: 20px;" aria-hidden="true">menu_book</span>
                                 <a href="@MainRoutes.GetNotebookRoute(nb.Id)" class="workspaces-tree-name" title="@nb.Name">@nb.Name</a>
                             </div>
                         }
                         @if (notebooks.Count == 0)
                         {
-                            <div class="workspaces-tree-row" style="padding-left: 28px; color: var(--mud-palette-text-secondary); font-size: 0.875rem;">No notebooks</div>
+                            <div class="workspaces-tree-row" style="padding-left: 48px; color: var(--mud-palette-text-secondary); font-size: 0.875rem;">No notebooks</div>
                         }
                     }
                 }

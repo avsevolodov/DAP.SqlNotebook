@@ -11,7 +11,7 @@ namespace DAP.SqlNotebook.Service.Middleware;
 
 internal class ExceptionHandlingMiddleware : IExceptionHandler
 {
-    public ExceptionHandlingMiddleware(ILogger log, ProblemDetailsFactory detailsFactory)
+    public ExceptionHandlingMiddleware(ILogger<ExceptionHandlingMiddleware> log, ProblemDetailsFactory detailsFactory)
     {
         _log = log;
         _detailsFactory = detailsFactory;
@@ -63,7 +63,7 @@ internal class ExceptionHandlingMiddleware : IExceptionHandler
         };
     }
 
-    private readonly ILogger _log;
+    private readonly ILogger<ExceptionHandlingMiddleware> _log;
     private readonly ProblemDetailsFactory _detailsFactory;
 
     private readonly struct ErrorResult(HttpStatusCode httpStatusCode, LogLevel logLevel)

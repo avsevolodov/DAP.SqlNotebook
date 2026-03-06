@@ -83,40 +83,71 @@ else
 
         if (ct == "pie")
         {
-            // Pie: one series. First column = labels, second (or first if numeric) = values.
-            var labels = new List<string>();
-            var values = new List<double>();
-            int valueCol = -1;
-            for (int c = 0; c < colCount; c++)
+            // Pie: one series. Choose the most-numeric column as values; labels come from a non-numeric column if possible.
+            var numericCounts = new int[colCount];
+            for (var c = 0; c < colCount; c++)
             {
-                int numericCount = 0;
+                var count = 0;
                 foreach (var row in rowList)
                 {
                     var cell = c < (row?.Count ?? 0) ? row?[c] ?? "" : "";
-                    if (double.TryParse(cell, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _))
-                        numericCount++;
+                    if (TryParseDouble(cell, out _))
+                        count++;
                 }
-                if (numericCount > 0 && (valueCol < 0 || numericCount > values.Count))
+                numericCounts[c] = count;
+            }
+
+            var valueCol = -1;
+            var best = 0;
+            for (var c = 0; c < colCount; c++)
+            {
+                if (numericCounts[c] > best)
                 {
+                    best = numericCounts[c];
                     valueCol = c;
-                    labels.Clear();
-                    values.Clear();
-                    foreach (var row in rowList)
-                    {
-                        var cell = c < (row?.Count ?? 0) ? row?[c] ?? "" : "";
-                        var label = c == 0 && colCount > 1 ? (0 < (row?.Count ?? 0) ? row?[0] ?? "" : "") : cell;
-                        if (double.TryParse(cell, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
-                        {
-                            values.Add(v);
-                            labels.Add(string.IsNullOrEmpty(label) ? cell : label);
-                        }
-                    }
                 }
             }
-            if (valueCol < 0 || values.Count == 0)
+            if (valueCol < 0 || best <= 0)
                 return null;
-            if (labels.Count != values.Count)
-                labels = Enumerable.Range(0, values.Count).Select(i => (i + 1).ToString()).ToList();
+
+            var labelCol = -1;
+            if (colCount > 1)
+            {
+                // Prefer a column that is non-numeric for labels.
+                for (var c = 0; c < colCount; c++)
+                {
+                    if (c == valueCol) continue;
+                    if (numericCounts[c] == 0) { labelCol = c; break; }
+                }
+                if (labelCol < 0)
+                {
+                    // Fallback: just pick the first other column.
+                    labelCol = valueCol == 0 ? 1 : 0;
+                }
+            }
+
+            var labels = new List<string>();
+            var values = new List<double>();
+            var idx = 0;
+            foreach (var row in rowList)
+            {
+                var cell = valueCol < (row?.Count ?? 0) ? row?[valueCol] ?? "" : "";
+                if (!TryParseDouble(cell, out var v))
+                    continue;
+
+                idx++;
+                values.Add(v);
+
+                var label = labelCol >= 0
+                    ? (labelCol < (row?.Count ?? 0) ? row?[labelCol] ?? "" : "")
+                    : "";
+                if (string.IsNullOrWhiteSpace(label))
+                    label = $"#{idx}";
+                labels.Add(label);
+            }
+            if (values.Count == 0)
+                return null;
+
             return new ChartData
             {
                 ChartType = ChartType.Pie,
@@ -156,5 +187,26 @@ else
             Series = seriesList,
             XAxisLabels = xLabels.ToArray()
         };
+    }
+
+    private static bool TryParseDouble(string? s, out double value)
+    {
+        value = 0;
+        if (string.IsNullOrWhiteSpace(s))
+            return false;
+
+        var styles = System.Globalization.NumberStyles.Any;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        if (double.TryParse(s, styles, inv, out value))
+            return true;
+
+        // Some result providers format numbers using current culture (e.g. "1,23" in ru-RU).
+        var cur = System.Globalization.CultureInfo.CurrentCulture;
+        if (double.TryParse(s, styles, cur, out value))
+            return true;
+
+        // Last resort: normalize decimal comma -> dot.
+        var normalized = s.Replace(',', '.');
+        return double.TryParse(normalized, styles, inv, out value);
     }
 }

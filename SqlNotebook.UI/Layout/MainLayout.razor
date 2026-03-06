@@ -40,40 +40,40 @@
     </MudPaper>
 
     <MudMainContent Style="position: relative; width:100%; height:100%; display:flex; flex-direction:row; overflow:hidden;">
-        @* Left icon bar: toggle panels *@
+        @* Left icon bar: switch panel (max one visible) *@
         <div class="layout-left-icon-bar" style="flex-shrink:0; width: 48px; border-right: 1px solid rgba(0,0,0,0.12); display: flex; flex-direction: column; align-items: center; padding: 8px 0; gap: 4px;">
             <MudIconButton Icon="@Icons.Material.Filled.Folder"
                            Title="Workspaces"
-                           Color="@(_workspacesPanelVisible ? Color.Primary : Color.Default)"
-                           Variant="@(_workspacesPanelVisible ? Variant.Filled : Variant.Text)"
-                           OnClick="ToggleWorkspacesPanel"
+                           Color="@(_leftPanelActive == "Workspaces" ? Color.Primary : Color.Default)"
+                           Variant="@(_leftPanelActive == "Workspaces" ? Variant.Filled : Variant.Text)"
+                           OnClick="OpenWorkspacesPanel"
                            Class="layout-panel-icon" />
             <MudIconButton Icon="@Icons.Material.Filled.Storage"
                            Title="Schema"
-                           Color="@(_schemaPanelVisible ? Color.Primary : Color.Default)"
-                           Variant="@(_schemaPanelVisible ? Variant.Filled : Variant.Text)"
-                           OnClick="ToggleSchemaPanel"
+                           Color="@(_leftPanelActive == "Schema" ? Color.Primary : Color.Default)"
+                           Variant="@(_leftPanelActive == "Schema" ? Variant.Filled : Variant.Text)"
+                           OnClick="OpenSchemaPanel"
                            Class="layout-panel-icon" />
         </div>
-        @if (_workspacesPanelVisible)
+        @if (_leftPanelActive == "Workspaces")
         {
             <MudPaper Class="pa-0 layout-panel-left layout-panel-workspaces" Style="@($"width:{_workspacesPanelWidth}px; min-width:160px; max-width:420px; border-right: 1px solid rgba(0,0,0,0.12); overflow:auto; flex-shrink:0;")">
                 <div class="layout-panel-header">
                     <MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Class="mr-1" />
                     <span class="layout-panel-title">Workspaces</span>
-                    <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small" title="Свернуть" OnClick="ToggleWorkspacesPanel" Class="ml-auto" />
+                    <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small" title="Свернуть" OnClick="CloseLeftPanel" Class="ml-auto" />
                 </div>
                 <WorkspacesTree />
             </MudPaper>
             <div class="layout-resizer layout-resizer-left" @onmousedown='@(e => StartResize(e, "leftWorkspaces"))' title="Изменить ширину"></div>
         }
-        @if (_schemaPanelVisible)
+        else if (_leftPanelActive == "Schema")
         {
             <MudPaper Class="pa-0 layout-panel-left layout-panel-schema" Style="@($"width:{_schemaPanelWidth}px; min-width:180px; max-width:500px; border-right: 1px solid rgba(0,0,0,0.12); overflow:auto; flex-shrink:0;")">
                 <div class="layout-panel-header">
                     <MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" Class="mr-1" />
                     <span class="layout-panel-title">Schema</span>
-                    <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small" title="Свернуть" OnClick="ToggleSchemaPanel" Class="ml-auto" />
+                    <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small" title="Свернуть" OnClick="CloseLeftPanel" Class="ml-auto" />
                 </div>
                 <SchemaTree />
             </MudPaper>
@@ -117,23 +117,22 @@
     private double _workspacesPanelWidth = 220;
     private double _schemaPanelWidth = 260;
     private double _rightPanelWidth = 320;
-    private bool _workspacesPanelVisible = true;
-    private bool _schemaPanelVisible = true;
+    private string? _leftPanelActive = null;
     private DotNetObjectReference<MainLayout>? _dotNetRef;
     private const string StorageKeyWorkspacesWidth = "sqlnotebook:layout:workspacesWidth";
     private const string StorageKeySchemaWidth = "sqlnotebook:layout:schemaWidth";
     private const string StorageKeyRight = "sqlnotebook:layout:rightWidth";
-    private const string StorageKeyWorkspacesVisible = "sqlnotebook:layout:workspacesVisible";
-    private const string StorageKeySchemaVisible = "sqlnotebook:layout:schemaVisible";
+    private const string StorageKeyLeftPanel = "sqlnotebook:layout:leftPanel";
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            var v1 = await JS.InvokeAsync<string>("localStorage.getItem", StorageKeyWorkspacesVisible);
-            if (v1 == "false") _workspacesPanelVisible = false;
-            var v2 = await JS.InvokeAsync<string>("localStorage.getItem", StorageKeySchemaVisible);
-            if (v2 == "false") _schemaPanelVisible = false;
+            var active = await JS.InvokeAsync<string>("localStorage.getItem", StorageKeyLeftPanel);
+            if (active == "Workspaces" || active == "Schema")
+                _leftPanelActive = active;
+            else
+                _leftPanelActive = null;
             var w1 = await JS.InvokeAsync<string>("localStorage.getItem", StorageKeyWorkspacesWidth);
             if (!string.IsNullOrEmpty(w1) && double.TryParse(w1, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var ww) && ww >= 160 && ww <= 420)
                 _workspacesPanelWidth = ww;
@@ -158,24 +157,29 @@
         _dotNetRef?.Dispose();
     }
 
-    private void ToggleWorkspacesPanel()
+    private void OpenWorkspacesPanel()
     {
-        _workspacesPanelVisible = !_workspacesPanelVisible;
-        _ = SavePanelVisibilityAsync();
+        _leftPanelActive = _leftPanelActive == "Workspaces" ? null : "Workspaces";
+        _ = SaveLeftPanelAsync();
     }
 
-    private void ToggleSchemaPanel()
+    private void OpenSchemaPanel()
     {
-        _schemaPanelVisible = !_schemaPanelVisible;
-        _ = SavePanelVisibilityAsync();
+        _leftPanelActive = _leftPanelActive == "Schema" ? null : "Schema";
+        _ = SaveLeftPanelAsync();
     }
 
-    private async Task SavePanelVisibilityAsync()
+    private void CloseLeftPanel()
+    {
+        _leftPanelActive = null;
+        _ = SaveLeftPanelAsync();
+    }
+
+    private async Task SaveLeftPanelAsync()
     {
         try
         {
-            await JS.InvokeVoidAsync("localStorage.setItem", StorageKeyWorkspacesVisible, _workspacesPanelVisible ? "true" : "false");
-            await JS.InvokeVoidAsync("localStorage.setItem", StorageKeySchemaVisible, _schemaPanelVisible ? "true" : "false");
+            await JS.InvokeVoidAsync("localStorage.setItem", StorageKeyLeftPanel, _leftPanelActive ?? "");
         }
         catch { }
     }

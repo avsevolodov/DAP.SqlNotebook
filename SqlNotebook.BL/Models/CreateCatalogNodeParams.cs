@@ -15,5 +15,7 @@ public sealed class CreateCatalogNodeParams
     public string? AuthType { get; set; }
     public string? Login { get; set; }
     public string? PasswordEncrypted { get; set; }
+    public string? ConsumerGroupPrefix { get; set; }
+    public bool ConsumerGroupAutoGenerate { get; set; }
     public Guid? EntityId { get; set; }
 }

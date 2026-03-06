@@ -11,4 +11,6 @@ public sealed class UpdateCatalogNodeParams
     public string? AuthType { get; set; }
     public string? Login { get; set; }
     public string? PasswordEncrypted { get; set; }
+    public string? ConsumerGroupPrefix { get; set; }
+    public bool? ConsumerGroupAutoGenerate { get; set; }
 }

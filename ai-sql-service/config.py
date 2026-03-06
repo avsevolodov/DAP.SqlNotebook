@@ -12,6 +12,7 @@ LLM_AUTOCOMPLETE_MODEL = "tinyllama"
 LLM_FIND_TABLES_MODEL = "tinyllama"
 
 SCHEMA_CACHE_TTL_SECONDS_DEFAULT = 600  # 10 minutes
+SCHEMA_API_URL_DEFAULT = "http://172.17.112.1:5175/api/v1/schema"
 
 
 def llm_base_url() -> str:
@@ -64,7 +65,7 @@ def embedding_model() -> str:
 
 
 def schema_api_url() -> str:
-    return os.getenv("SCHEMA_API_URL") or "http://172.17.112.1:5175/api/v1/schema"
+    return os.getenv("SCHEMA_API_URL") or SCHEMA_API_URL_DEFAULT
 
 
 def schema_cache_ttl_seconds() -> int:

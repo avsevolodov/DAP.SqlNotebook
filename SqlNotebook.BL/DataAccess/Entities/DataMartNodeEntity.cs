@@ -51,6 +51,13 @@ namespace DAP.SqlNotebook.BL.DataAccess.Entities
         [MaxLength(2048)]
         public string? PasswordEncrypted { get; set; }
 
+        /// <summary>Kafka: consumer group id prefix (used as-is when AutoGenerate is false).</summary>
+        [MaxLength(256)]
+        public string? ConsumerGroupPrefix { get; set; }
+
+        /// <summary>Kafka: when true, a GUID suffix is appended each call.</summary>
+        public bool ConsumerGroupAutoGenerate { get; set; }
+
         public int SortOrder { get; set; }
 
         public Guid? EntityId { get; set; }

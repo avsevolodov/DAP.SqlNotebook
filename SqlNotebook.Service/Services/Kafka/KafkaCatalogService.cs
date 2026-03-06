@@ -15,12 +15,12 @@ namespace DAP.SqlNotebook.Service.Services.Kafka;
 
 public sealed class KafkaCatalogService : IKafkaCatalogService, IKafkaMessageReader
 {
-    private const string DefaultConsumerGroupId = "sqlnotebook-peek";
+    private const string DefaultConsumerGroupPrefix = "sqlnotebook-peek";
 
     private readonly ICatalogRepository _catalog;
     private readonly IDataSourcePasswordProtector _passwordProtector;
     private readonly ILogger<KafkaCatalogService> _logger;
-    private readonly string _consumerGroupId;
+    private readonly string _defaultConsumerGroupPrefix;
 
     public KafkaCatalogService(
         ICatalogRepository catalog,
@@ -32,7 +32,8 @@ public sealed class KafkaCatalogService : IKafkaCatalogService, IKafkaMessageRea
         _passwordProtector = passwordProtector ?? throw new ArgumentNullException(nameof(passwordProtector));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         var kafkaSection = configuration?.GetSection("SqlNotebook")?.GetSection("Kafka");
-        _consumerGroupId = kafkaSection?.GetValue("ConsumerGroupId", DefaultConsumerGroupId) ?? DefaultConsumerGroupId;
+        // Backward compatible: old setting name was ConsumerGroupId; now treated as prefix default.
+        _defaultConsumerGroupPrefix = kafkaSection?.GetValue("ConsumerGroupId", DefaultConsumerGroupPrefix) ?? DefaultConsumerGroupPrefix;
     }
 
     public async Task EnsureTopicsLoadedAsync(Guid kafkaNodeId, CancellationToken ct = default)
@@ -201,7 +202,7 @@ public sealed class KafkaCatalogService : IKafkaCatalogService, IKafkaMessageRea
         var config = new ConsumerConfig
         {
             BootstrapServers = bootstrap,
-            GroupId = _consumerGroupId,
+            GroupId = BuildConsumerGroupId(node),
             EnableAutoCommit = false,
             //AutoOffsetReset = AutoOffsetReset.Latest,
             //EnableAutoOffsetStore = false,
@@ -219,5 +220,15 @@ public sealed class KafkaCatalogService : IKafkaCatalogService, IKafkaMessageRea
         }
 
         return config;
+    }
+
+    private string BuildConsumerGroupId(CatalogNode node)
+    {
+        var prefix = (node.ConsumerGroupPrefix ?? _defaultConsumerGroupPrefix ?? DefaultConsumerGroupPrefix).Trim();
+        if (string.IsNullOrWhiteSpace(prefix))
+            prefix = DefaultConsumerGroupPrefix;
+        if (!node.ConsumerGroupAutoGenerate)
+            return prefix;
+        return $"{prefix}-{Guid.NewGuid():N}";
     }
 }

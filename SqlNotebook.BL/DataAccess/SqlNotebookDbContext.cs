@@ -95,6 +95,7 @@ namespace DAP.SqlNotebook.BL.DataAccess
                 e.Property(x => x.AuthType).HasMaxLength(32);
                 e.Property(x => x.Login).HasMaxLength(256);
                 e.Property(x => x.PasswordEncrypted).HasMaxLength(2048);
+                e.Property(x => x.ConsumerGroupPrefix).HasMaxLength(256);
                 e.HasOne(x => x.Parent)
                     .WithMany()
                     .HasForeignKey(x => x.ParentId)

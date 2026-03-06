@@ -20,4 +20,10 @@ public class CatalogNodeInfo
     /// <summary>Auth: "Basic" or "Kerberos".</summary>
     public string? AuthType { get; set; }
     public string? Login { get; set; }
+
+    /// <summary>Kafka: consumer group prefix.</summary>
+    public string? ConsumerGroupPrefix { get; set; }
+
+    /// <summary>Kafka: when true, GUID is appended each time.</summary>
+    public bool ConsumerGroupAutoGenerate { get; set; }
 }

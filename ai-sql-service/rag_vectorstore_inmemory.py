@@ -1,7 +1,8 @@
 """
-In-memory vector store backend for schema RAG index.
+DEPRECATED: in-memory vector store backend for schema RAG index.
 
-Separated from rag_index so that backend-specific imports live in their own module.
+RAG now requires Qdrant (`rag_vectorstore_qdrant.py`) and `QDRANT_URL` to be configured.
+This module is kept only for reference and is not used by the application.
 """
 from __future__ import annotations
 

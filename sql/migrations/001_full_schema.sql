@@ -95,6 +95,8 @@ BEGIN
         AuthType NVARCHAR(32) NULL,
         Login NVARCHAR(256) NULL,
         PasswordEncrypted NVARCHAR(2048) NULL,
+        ConsumerGroupPrefix NVARCHAR(256) NULL,
+        ConsumerGroupAutoGenerate BIT NOT NULL CONSTRAINT DF_DataMartNodes_ConsumerGroupAutoGenerate DEFAULT 0,
         CONSTRAINT PK_DataMartNodes PRIMARY KEY (Id),
         CONSTRAINT FK_DataMartNodes_Parent FOREIGN KEY (ParentId) REFERENCES dbo.DataMartNodes(Id) ON DELETE NO ACTION,
         CONSTRAINT FK_DataMartNodes_Entity FOREIGN KEY (EntityId) REFERENCES dbo.DbEntities(Id) ON DELETE SET NULL

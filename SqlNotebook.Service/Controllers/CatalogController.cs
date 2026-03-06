@@ -104,6 +104,8 @@ namespace DAP.SqlNotebook.Service.Controllers
                 AuthType = model.AuthType,
                 Login = model.Login,
                 PasswordEncrypted = passwordEncrypted,
+                ConsumerGroupPrefix = model.ConsumerGroupPrefix,
+                ConsumerGroupAutoGenerate = model.ConsumerGroupAutoGenerate,
             };
             var node = await _repository.UpdateNodeAsync(id, update, ct).ConfigureAwait(false);
             if (node == null) return NotFound();
@@ -172,6 +174,8 @@ namespace DAP.SqlNotebook.Service.Controllers
                 AuthType = model.AuthType,
                 Login = model.Login,
                 PasswordEncrypted = passwordEncrypted,
+                ConsumerGroupPrefix = model.ConsumerGroupPrefix,
+                ConsumerGroupAutoGenerate = model.ConsumerGroupAutoGenerate,
                 EntityId = model.EntityId,
             };
             var node = await _repository.CreateNodeAsync(create, ct).ConfigureAwait(false);

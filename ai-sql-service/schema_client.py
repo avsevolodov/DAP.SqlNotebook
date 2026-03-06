@@ -1,6 +1,9 @@
-# Minimal client for schema API: get_entity(name), search_entities(query).
-# Uses SCHEMA_API_URL (default http://localhost:5175/api/v1/schema).
-# Catalog API: same host, path /api/v1/catalog/nodes.
+"""
+Minimal client for schema API: get_entity(name), search_entities(query).
+
+Uses SCHEMA_API_URL (default http://localhost:5175/api/v1/schema).
+Catalog API: same host, path /api/v1/catalog/nodes.
+"""
 import os
 import re
 from typing import Any
@@ -8,6 +11,8 @@ from typing import Any
 import requests
 
 _SCHEMA_CACHE: dict[str, Any] = {}
+
+REQUEST_TIMEOUT_SEC = 5
 
 
 def _schema_url() -> str:
@@ -31,7 +36,7 @@ def get_catalog_nodes(parent_id: str | None = None) -> list[dict]:
     if parent_id:
         url += f"?parentId={parent_id}"
     try:
-        r = requests.get(url, timeout=5)
+        r = requests.get(url, timeout=REQUEST_TIMEOUT_SEC)
         r.raise_for_status()
         return r.json() or []
     except Exception:
@@ -43,7 +48,7 @@ def get_databases() -> list[dict]:
     base = _catalog_base_url()
     url = f"{base}/api/v1/catalog/databases"
     try:
-        r = requests.get(url, timeout=5)
+        r = requests.get(url, timeout=REQUEST_TIMEOUT_SEC)
         r.raise_for_status()
         return r.json() or []
     except Exception:
@@ -55,7 +60,7 @@ def get_tables() -> list[dict]:
     base = _catalog_base_url()
     url = f"{base}/api/v1/catalog/tables"
     try:
-        r = requests.get(url, timeout=5)
+        r = requests.get(url, timeout=REQUEST_TIMEOUT_SEC)
         r.raise_for_status()
         return r.json() or []
     except Exception:
@@ -67,7 +72,7 @@ def get_entity_fields(entity_id: str) -> list[dict]:
     base = _catalog_base_url()
     url = f"{base}/api/v1/catalog/entities/{entity_id}/fields"
     try:
-        r = requests.get(url, timeout=5)
+        r = requests.get(url, timeout=REQUEST_TIMEOUT_SEC)
         r.raise_for_status()
         return r.json() or []
     except Exception:
@@ -79,7 +84,7 @@ def get_entity_relations(entity_id: str) -> list[dict]:
     base = _catalog_base_url()
     url = f"{base}/api/v1/catalog/entities/{entity_id}/relations"
     try:
-        r = requests.get(url, timeout=5)
+        r = requests.get(url, timeout=REQUEST_TIMEOUT_SEC)
         r.raise_for_status()
         return r.json() or []
     except Exception:
@@ -90,7 +95,7 @@ def _fetch_schema() -> dict:
     if _SCHEMA_CACHE:
         return _SCHEMA_CACHE
     try:
-        r = requests.get(_schema_url(), timeout=5)
+        r = requests.get(_schema_url(), timeout=REQUEST_TIMEOUT_SEC)
         r.raise_for_status()
         data = r.json()
         _SCHEMA_CACHE["entities"] = data.get("entities") or data.get("Entities") or []

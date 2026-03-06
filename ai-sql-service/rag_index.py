@@ -1,23 +1,27 @@
 """
 RAG index over schema (tables/entities). Uses Qdrant (in-memory or QDRANT_URL).
-Indexing flow: 1) get list of DBs (catalog nodes), 2) get list of tables and descriptions (schema entities),
-3) for each table get fields and relations; build one document per table. Debug: tables_in_index, docs_count.
+
+Indexing flow: 1) get list of DBs (catalog nodes), 2) get list of tables and descriptions,
+3) for each table get fields and relations; build one document per table.
 Uses OllamaEmbeddings when LLM_API_URL points to Ollama to avoid "invalid input type".
 """
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
 from typing import Any, Callable, Optional
 
 from langchain_core.documents import Document
-from langchain_core.vectorstores import VectorStore
 from langchain_core.embeddings import Embeddings
+from langchain_core.vectorstores import VectorStore
 
 from rag_models import RagCatalogNode, RagEntity, RagField, RagRelation, RagSchema
 from rag_vectorstore_inmemory import build_inmemory_vector_store
 from rag_vectorstore_qdrant import build_qdrant_vector_store
+
+logger = logging.getLogger(__name__)
 
 # Reindex interval in seconds (default 5 min)
 RAG_REINDEX_INTERVAL_SEC = int(os.getenv("RAG_REINDEX_INTERVAL_SECONDS", "300"))
@@ -38,7 +42,7 @@ def get_index_stats() -> dict[str, Any]:
     return dict(_index_stats)
 
 
-def _is_LLM_API_URL(base_url: str) -> bool:
+def _is_ollama_base_url(base_url: str) -> bool:
     """True if base_url is likely Ollama (avoids OpenAI-compatible embedding 400 invalid input type)."""
     if not base_url:
         return False
@@ -48,26 +52,24 @@ def _is_LLM_API_URL(base_url: str) -> bool:
 
 def _get_embedding() -> Embeddings:
     global _embedding
-    
+
     if _embedding is None:
         api_key = os.getenv("LLM_API_KEY", "ollama")
         base_url = (os.getenv("LLM_API_URL") or "http://localhost:7869/v1").strip().rstrip("/")
         model = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
-        if _is_LLM_API_URL(base_url):
+        if _is_ollama_base_url(base_url):
             from langchain_ollama import OllamaEmbeddings
+
             ollama_base = base_url.replace("/v1", "").rstrip("/") or "http://localhost:11434"
-            _embedding = OllamaEmbeddings(
-                base_url=ollama_base,
-                model=model,
-            )
-            print("=== RAG using OllamaEmbeddings ===", ollama_base, model)
+            _embedding = OllamaEmbeddings(base_url=ollama_base, model=model)
+            logger.info("RAG using OllamaEmbeddings: %s model=%s", ollama_base, model)
         else:
             from langchain_openai import OpenAIEmbeddings
+
             _embedding = OpenAIEmbeddings(
                 api_key=api_key,
                 openai_api_base=base_url,
                 model=model,
-                
             )
     return _embedding
 
@@ -75,6 +77,22 @@ def _get_embedding() -> Embeddings:
 def _safe_metadata(meta: dict[str, Any]) -> dict[str, str]:
     """Ensure metadata is only str values for Qdrant (avoids EnumTypeWrapper etc)."""
     return {k: str(v) if v is not None else "" for k, v in meta.items()}
+
+
+def _str_or_empty(value: Any) -> str:
+    """Return stripped string or empty string for None."""
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _norm_entity_field(f: dict) -> dict:
+    """Normalize entity field dict to rag_models shape (name, dataType, isPrimaryKey)."""
+    return {
+        "name": _str_or_empty(f.get("name") or f.get("Name")),
+        "dataType": _str_or_empty(f.get("dataType") or f.get("DataType")),
+        "isPrimaryKey": bool(f.get("isPrimaryKey") or f.get("IsPrimaryKey") or False),
+    }
 
 
 def _fetch_indexing_data_via_endpoints() -> tuple[list[RagCatalogNode], list[RagEntity], list[RagRelation]]:
@@ -94,6 +112,7 @@ def _fetch_indexing_data_via_endpoints() -> tuple[list[RagCatalogNode], list[Rag
     if not raw_tables:
         try:
             from schema_loader import get_schema_object
+
             schema = get_schema_object(force_refresh=True)
             entities = schema.get("entities") or schema.get("Entities") or []
             if entities:
@@ -103,27 +122,20 @@ def _fetch_indexing_data_via_endpoints() -> tuple[list[RagCatalogNode], list[Rag
                     if eid is None:
                         continue
                     eid_str = str(eid).strip()
-                    def _s(v):
-                        if v is None:
-                            return ""
-                        return str(v).strip()
-                    def _norm_field(f: dict) -> dict:
-                        return {
-                            "name": _s(f.get("name") or f.get("Name")),
-                            "dataType": _s(f.get("dataType") or f.get("DataType")),
-                            "isPrimaryKey": bool(f.get("isPrimaryKey") or f.get("IsPrimaryKey") or False),
-                        }
                     raw_fields = e.get("fields") or e.get("Fields") or []
                     raw_tables.append({
                         "id": eid_str,
-                        "name": _s(e.get("name") or e.get("Name")),
-                        "displayName": _s(e.get("displayName") or e.get("DisplayName")),
-                        "description": _s(e.get("description") or e.get("Description")),
-                        "fields": [_norm_field(f) for f in raw_fields],
+                        "name": _str_or_empty(e.get("name") or e.get("Name")),
+                        "displayName": _str_or_empty(e.get("displayName") or e.get("DisplayName")),
+                        "description": _str_or_empty(e.get("description") or e.get("Description")),
+                        "fields": [_norm_entity_field(f) for f in raw_fields],
                     })
-                print("=== RAG INDEX: using schema from GET /api/v1/schema (catalog/tables was empty) ===", "entities:", len(raw_tables))
+                logger.info(
+                    "RAG index: using schema from GET /api/v1/schema (catalog/tables empty), entities=%d",
+                    len(raw_tables),
+                )
         except Exception as ex:
-            print("RAG fallback schema fetch failed:", ex)
+            logger.warning("RAG fallback schema fetch failed: %s", ex)
 
     entities_with_fields: list[RagEntity] = []
     relations_flat: list[RagRelation] = []
@@ -264,7 +276,7 @@ def get_vector_store(
             _index_stats["docs_count"] = len(docs)
 
         if not docs:
-            print("=== RAG INDEX: no documents (tables_count=0 or empty schema) ===")
+            logger.warning("RAG index: no documents (tables_count=0 or empty schema)")
             return _vector_store
 
         emb = _get_embedding()
@@ -273,7 +285,7 @@ def get_vector_store(
         for attempt in range(1, RAG_BUILD_RETRIES + 1):
             try:
                 if url:
-                    print("=== RAG INDEX (Qdrant) BUILDING... ===", _index_stats)
+                    logger.info("RAG index (Qdrant) building: %s", _index_stats)
                     dim = int(os.getenv("EMBEDDING_DIM", "4096"))
                     # Ensure metadata is only primitives (str) for Qdrant
                     docs_clean = [
@@ -287,11 +299,11 @@ def get_vector_store(
                         embedding=emb,
                         dim=dim,
                     )
-                    print("=== RAG INDEX (Qdrant) REBUILT ===", _index_stats)
+                    logger.info("RAG index (Qdrant) rebuilt: %s", _index_stats)
                 else:
-                    print("=== RAG INDEX (InMemory) BUILDING... ===", _index_stats)
+                    logger.info("RAG index (InMemory) building: %s", _index_stats)
                     _vector_store = build_inmemory_vector_store(docs, emb)
-                    print("=== RAG INDEX (InMemory) REBUILT ===", _index_stats)
+                    logger.info("RAG index (InMemory) rebuilt: %s", _index_stats)
                 last_error = None
                 break
             except Exception as e:
@@ -303,8 +315,13 @@ def get_vector_store(
                     or "timeout" in err_str or "unreachable" in err_str
                 )
                 if is_connection_error and attempt < RAG_BUILD_RETRIES:
-                    print(f"RAG index build attempt {attempt}/{RAG_BUILD_RETRIES} failed (Ollama not ready):", e)
-                    print(f"Retrying in {RAG_BUILD_RETRY_DELAY_SEC}s...")
+                    logger.warning(
+                        "RAG index build attempt %s/%s failed (Ollama not ready): %s",
+                        attempt,
+                        RAG_BUILD_RETRIES,
+                        e,
+                    )
+                    logger.info("Retrying in %ss...", RAG_BUILD_RETRY_DELAY_SEC)
                     time.sleep(RAG_BUILD_RETRY_DELAY_SEC)
                 else:
                     raise
@@ -312,7 +329,7 @@ def get_vector_store(
             raise last_error
     except Exception as e:
         _index_stats["error"] = str(e)
-        print("RAG index build failed:", e)
+        logger.exception("RAG index build failed: %s", e)
         _vector_store = None
     return _vector_store
 
@@ -337,11 +354,11 @@ def run_background_reindex(use_separate_endpoints: bool = True) -> None:
         try:
             get_vector_store(use_separate_endpoints=use_separate_endpoints)
         except Exception as e:
-            print("Background RAG reindex error:", e)
+            logger.warning("Background RAG reindex error: %s", e)
 
 
 def start_background_reindex(use_separate_endpoints: bool = True) -> None:
     """Start daemon thread that reindexes schema every 5 min via separate endpoints (databases, tables, fields, relations)."""
     t = threading.Thread(target=run_background_reindex, args=(use_separate_endpoints,), daemon=True)
     t.start()
-    print("=== RAG background reindex started (interval sec:", RAG_REINDEX_INTERVAL_SEC, ") ===")
+    logger.info("RAG background reindex started (interval_sec=%s)", RAG_REINDEX_INTERVAL_SEC)

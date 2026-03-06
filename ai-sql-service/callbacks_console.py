@@ -1,10 +1,10 @@
 """LangChain callback handler: print each step to console (LLM, retriever, chain)."""
 from __future__ import annotations
 
+from typing import Any, Optional, Sequence
+
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.outputs import LLMResult
-
-from typing import Any, Optional, Sequence
 
 
 class ConsoleCallbackHandler(BaseCallbackHandler):

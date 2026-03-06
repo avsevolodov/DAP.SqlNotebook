@@ -12,4 +12,6 @@ public class CatalogNodeUpdateInfo
     public string? Login { get; set; }
     /// <summary>If set, update stored password (Basic auth).</summary>
     public string? Password { get; set; }
+    public string? ConsumerGroupPrefix { get; set; }
+    public bool? ConsumerGroupAutoGenerate { get; set; }
 }

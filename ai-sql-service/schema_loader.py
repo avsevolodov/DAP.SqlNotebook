@@ -1,15 +1,20 @@
 """Schema fetch from C# backend and markdown building."""
+import logging
 import time
 from typing import Optional
 
 import requests
 
 from config import schema_api_url, schema_cache_ttl_seconds
-from schema_models import SchemaEntity
 from schema_client import get_entity, search_entities
+from schema_models import SchemaEntity
+
+logger = logging.getLogger(__name__)
 
 # Cache key: catalog_node_id or "all" for full schema. Value: {"expires_at", "value"}
 _schema_cache: dict[str, dict] = {}
+
+REQUEST_TIMEOUT_SEC = 5
 
 
 def get_schema_object(force_refresh: bool = False, catalog_node_id: Optional[str] = None) -> dict:
@@ -27,26 +32,26 @@ def get_schema_object(force_refresh: bool = False, catalog_node_id: Optional[str
     ttl_sec = schema_cache_ttl_seconds()
     entry = _schema_cache.get(cache_key)
     if not force_refresh and entry and entry.get("value") and time.time() < entry.get("expires_at", 0):
-        print("=== SCHEMA FROM CACHE ===", cache_key)
+        logger.debug("Schema from cache: %s", cache_key)
         return entry["value"]
 
     try:
-        resp = requests.get(url, timeout=5)
+        resp = requests.get(url, timeout=REQUEST_TIMEOUT_SEC)
         resp.raise_for_status()
         schema = resp.json()
         _schema_cache[cache_key] = {
             "value": schema,
             "expires_at": time.time() + ttl_sec,
         }
-        print("=== SCHEMA FETCHED ===", url[:80], "keys:", list(schema.keys()) if isinstance(schema, dict) else "n/a")
+        keys_preview = list(schema.keys()) if isinstance(schema, dict) else "n/a"
+        logger.debug("Schema fetched: %s keys=%s", url[:80], keys_preview)
         return schema
     except Exception as exc:
-        print("Failed to fetch schema from", url, "error:", exc)
+        logger.exception("Failed to fetch schema from %s: %s", url, exc)
         if "Connection refused" in str(exc) or "111" in str(exc):
-            print(
-                "Hint: When ai-sql-service runs in Docker, the C# backend (SqlNotebook.Service) must be running on the host "
-                "and reachable at that URL. Start the backend with: dotnet run --urls http://0.0.0.0:5175 "
-                "(or set ASPNETCORE_URLS=http://0.0.0.0:5175). Then ensure nothing is blocking port 5175."
+            logger.info(
+                "Hint: When ai-sql-service runs in Docker, start C# backend with: "
+                "dotnet run --urls http://0.0.0.0:5175 (or ASPNETCORE_URLS=http://0.0.0.0:5175)."
             )
         return {}
 

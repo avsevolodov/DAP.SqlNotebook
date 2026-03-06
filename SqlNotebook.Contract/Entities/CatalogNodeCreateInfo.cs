@@ -20,6 +20,8 @@ public class CatalogNodeCreateInfo
     public string? Login { get; set; }
     /// <summary>Only for Basic auth; sent on create/update, never returned.</summary>
     public string? Password { get; set; }
+    public string? ConsumerGroupPrefix { get; set; }
+    public bool ConsumerGroupAutoGenerate { get; set; }
     public string? Owner { get; set; }
     /// <summary>For table/view node: link to entity.</summary>
     public Guid? EntityId { get; set; }

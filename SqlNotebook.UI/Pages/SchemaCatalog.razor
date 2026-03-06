@@ -140,6 +140,17 @@
                 <MudTextField @bind-Value="_editLogin" Label="Login" Variant="Variant.Outlined" />
                 <MudTextField @bind-Value="_editPassword" Label="Password" Variant="Variant.Outlined" InputType="InputType.Password" Placeholder="@(_editingId.HasValue ? "Leave empty to keep current" : "")" />
             }
+            @if (string.Equals(_editProvider, "Kafka", StringComparison.OrdinalIgnoreCase))
+            {
+                <MudTextField @bind-Value="_editKafkaConsumerGroupPrefix"
+                              Label="Consumer group prefix"
+                              Variant="Variant.Outlined"
+                              Placeholder="e.g. sqlnotebook-peek"
+                              HelperText="Used as groupId when Auto-generate is off; otherwise GUID is appended each request." />
+                <MudCheckBox T="bool" @bind-Checked="_editKafkaConsumerGroupAutoGenerate"
+                             Label="Auto-generate (append GUID each time)"
+                             Color="Color.Primary" />
+            }
             <MudTextField @bind-Value="_editDescription" Label="Description" Variant="Variant.Outlined" Lines="2" />
         </MudStack>
     </DialogContent>
@@ -182,6 +193,8 @@
     private string? _editLogin;
     private string? _editPassword;
     private string? _editDescription;
+    private string _editKafkaConsumerGroupPrefix = "sqlnotebook-peek";
+    private bool _editKafkaConsumerGroupAutoGenerate = false;
     private Guid? _deleteId;
     private string _deleteName = "";
     private HashSet<Guid> _checkingIds = new();
@@ -253,6 +266,8 @@
         _editLogin = null;
         _editPassword = null;
         _editDescription = null;
+        _editKafkaConsumerGroupPrefix = "sqlnotebook-peek";
+        _editKafkaConsumerGroupAutoGenerate = false;
         _showEditDialog = true;
     }
 
@@ -268,6 +283,8 @@
         _editLogin = item.Login;
         _editPassword = null; // never show stored password
         _editDescription = item.Description;
+        _editKafkaConsumerGroupPrefix = string.IsNullOrWhiteSpace(item.ConsumerGroupPrefix) ? "sqlnotebook-peek" : item.ConsumerGroupPrefix!;
+        _editKafkaConsumerGroupAutoGenerate = item.ConsumerGroupAutoGenerate;
         _showEditDialog = true;
     }
 
@@ -300,6 +317,8 @@
                     Login = _editLogin,
                     Password = _editPassword,
                     Description = _editDescription,
+                    ConsumerGroupPrefix = string.Equals(_editProvider, "Kafka", StringComparison.OrdinalIgnoreCase) ? _editKafkaConsumerGroupPrefix : null,
+                    ConsumerGroupAutoGenerate = string.Equals(_editProvider, "Kafka", StringComparison.OrdinalIgnoreCase) ? _editKafkaConsumerGroupAutoGenerate : null,
                 };
                 var res = await Http.PutAsJsonAsync($"api/v1/catalog/nodes/{_editingId.Value:N}", update);
                 if (!res.IsSuccessStatusCode) return;
@@ -319,6 +338,8 @@
                     Login = _editLogin,
                     Password = _editPassword,
                     Description = _editDescription,
+                    ConsumerGroupPrefix = string.Equals(_editProvider, "Kafka", StringComparison.OrdinalIgnoreCase) ? _editKafkaConsumerGroupPrefix : null,
+                    ConsumerGroupAutoGenerate = string.Equals(_editProvider, "Kafka", StringComparison.OrdinalIgnoreCase) && _editKafkaConsumerGroupAutoGenerate,
                 };
                 await Http.PostAsJsonAsync("api/v1/catalog/nodes", create);
             }
@@ -455,6 +476,8 @@
                 AuthType = item.AuthType,
                 Login = item.Login,
                 Description = _editDescriptionValue,
+                ConsumerGroupPrefix = item.ConsumerGroupPrefix,
+                ConsumerGroupAutoGenerate = item.ConsumerGroupAutoGenerate,
             };
             var res = await Http.PutAsJsonAsync($"api/v1/catalog/nodes/{item.Id:N}", update);
             if (res.IsSuccessStatusCode)
