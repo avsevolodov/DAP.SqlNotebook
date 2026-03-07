@@ -28,6 +28,9 @@ namespace DAP.SqlNotebook.Contract.Entities
         /// <summary>Display name of the default database for the UI.</summary>
         public string? CatalogNodeDisplayName { get; set; }
 
+        /// <summary>Тип ноутбука: БД (с запросами к выбранной БД) или Generic (без подключения к БД).</summary>
+        public NotebookTypeInfo NotebookType { get; set; } = NotebookTypeInfo.Db;
+
         public string? CreatedBy { get; set; }
         public string? UpdatedBy { get; set; }
     }

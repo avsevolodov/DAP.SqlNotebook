@@ -13,7 +13,14 @@
                  Variant="Variant.Outlined"
                  Immediate="true"
                  @onkeydown="OnKeyDown" />
-    @if (Databases != null && Databases.Count > 0)
+    <MudRadioGroup T="NotebookTypeInfo" Name="NotebookType" Value="@NotebookType" ValueChanged="HandleTypeChanged" Row="true">
+        <MudRadio T="NotebookTypeInfo" Option="NotebookTypeInfo.Db" Color="Color.Primary">БД</MudRadio>
+        <MudRadio T="NotebookTypeInfo" Option="NotebookTypeInfo.Generic" Color="Color.Primary">Generic</MudRadio>
+    </MudRadioGroup>
+    <MudText Typo="Typo.caption" Color="Color.Secondary">
+        @(NotebookType == NotebookTypeInfo.Db ? "Выберите БД для выполнения запросов." : "Простой ноутбук без подключения к БД (только ячейки Markdown, Excalidraw).")
+    </MudText>
+    @if (NotebookType == NotebookTypeInfo.Db && Databases != null && Databases.Count > 0)
     {
         <MudSelect T="CatalogNodeInfo?"
                    Label="База данных (схема)"
@@ -27,7 +34,6 @@
                 <MudSelectItem T="CatalogNodeInfo?" Value="@db">@(db.DatabaseName ?? db.Name ?? "—")</MudSelectItem>
             }
         </MudSelect>
-        <MudText Typo="Typo.caption" Color="Color.Secondary">С этой БД будет работать notebook по умолчанию.</MudText>
     }
     <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleCreate">Создать</MudButton>
 </MudStack>
@@ -37,6 +43,8 @@
 
     [Parameter] public string Name { get; set; } = "";
     [Parameter] public EventCallback<string> NameChanged { get; set; }
+    [Parameter] public NotebookTypeInfo NotebookType { get; set; } = NotebookTypeInfo.Db;
+    [Parameter] public EventCallback<NotebookTypeInfo> NotebookTypeChanged { get; set; }
     [Parameter] public List<CatalogNodeInfo>? Databases { get; set; }
     [Parameter] public CatalogNodeInfo? SelectedDatabase { get; set; }
     [Parameter] public EventCallback<CatalogNodeInfo?> SelectedDatabaseChanged { get; set; }
@@ -58,6 +66,14 @@
     {
         if (SelectedDatabaseChanged.HasDelegate)
             await SelectedDatabaseChanged.InvokeAsync(value);
+    }
+
+    private async Task HandleTypeChanged(NotebookTypeInfo value)
+    {
+        if (NotebookTypeChanged.HasDelegate)
+            await NotebookTypeChanged.InvokeAsync(value);
+        if (value == NotebookTypeInfo.Generic && SelectedDatabaseChanged.HasDelegate)
+            await SelectedDatabaseChanged.InvokeAsync(null);
     }
 
     private async Task HandleCreate()

@@ -37,6 +37,9 @@ namespace DAP.SqlNotebook.BL.DataAccess.Entities
         [MaxLength(256)]
         public string? CatalogNodeDisplayName { get; set; }
 
+        /// <summary>Тип ноутбука: 0 = Db, 1 = Generic.</summary>
+        public int NotebookType { get; set; }
+
         [ForeignKey(nameof(WorkspaceId))]
         public WorkspaceEntity? Workspace { get; set; }
 

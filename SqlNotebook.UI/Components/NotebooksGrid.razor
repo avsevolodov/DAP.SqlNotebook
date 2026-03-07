@@ -250,6 +250,7 @@
                 Id = Guid.NewGuid(),
                 Name = full.Name + " (copy)",
                 WorkspaceId = full.WorkspaceId,
+                NotebookType = full.NotebookType,
                 CatalogNodeId = full.CatalogNodeId,
                 CatalogNodeDisplayName = full.CatalogNodeDisplayName,
                 Cells = full.Cells?.Select(c => new NotebookCellInfo

@@ -118,6 +118,7 @@ BEGIN
         WorkspaceId UNIQUEIDENTIFIER NULL,
         CatalogNodeId UNIQUEIDENTIFIER NULL,
         CatalogNodeDisplayName NVARCHAR(256) NULL,
+        NotebookType INT NOT NULL CONSTRAINT DF_Notebooks_NotebookType DEFAULT 0,
         CONSTRAINT PK_Notebooks PRIMARY KEY (Id),
         CONSTRAINT FK_Notebooks_Workspaces FOREIGN KEY (WorkspaceId) REFERENCES dbo.Workspaces(Id) ON DELETE SET NULL
     );

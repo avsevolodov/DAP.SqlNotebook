@@ -19,6 +19,9 @@ namespace DAP.SqlNotebook.Contract.Entities
         /// <summary>Id of the workspace this notebook belongs to; null if not in a workspace.</summary>
         public Guid? WorkspaceId { get; set; }
 
+        /// <summary>Тип ноутбука: БД или Generic.</summary>
+        public NotebookTypeInfo NotebookType { get; set; } = NotebookTypeInfo.Db;
+
         public string? CreatedBy { get; set; }
         public string? UpdatedBy { get; set; }
     }

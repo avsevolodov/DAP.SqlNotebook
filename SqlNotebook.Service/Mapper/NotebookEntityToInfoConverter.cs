@@ -37,6 +37,7 @@ public sealed class NotebookEntityToInfoConverter : ITypeConverter<NotebookEntit
             WorkspaceId = source.WorkspaceId,
             CatalogNodeId = source.CatalogNodeId,
             CatalogNodeDisplayName = source.CatalogNodeDisplayName,
+            NotebookType = (NotebookTypeInfo)source.NotebookType,
             CreatedBy = source.CreatedBy,
             UpdatedBy = source.UpdatedBy,
             Cells = cells,
