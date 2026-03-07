@@ -61,15 +61,14 @@
                               OnRun="RunQuery"
                               OnRunSqlFromMarkdown="RunQueryFromSql"
                               OnRunAsChart="RunQueryAsChart"
-                              OnAddNewCell="AddCurrentAsCell"
-                              OnAddMarkdown="AddMarkdownCell"
-                              OnAddExcalidraw="AddExcalidrawCell"
+                              OnAddCell="AddCell"
                               OnInsertIntoEditor="InsertIntoEditor"
                               ExecutionError="@_executionError"
                               ExecutionErrorChanged="OnExecutionErrorChanged"
                               OnChartTypeChanged="OnCellChartTypeChanged"
                               OnFormatCell="OnCellFormat"
                               OnExcalidrawContentChanged="OnExcalidrawContentChanged"
+                              OnExcalidrawSaveRequested="OnExcalidrawSave"
                               OnDeleteCell="HandleDeleteCell"
                               OnCellUpdated="SaveNotebookAfterCellUpdate" />
             }
@@ -116,6 +115,8 @@
     private List<CatalogNodeInfo> _databaseNodes = new();
     private CatalogNodeInfo? _selectedDatabase;
     private string? _notebookDatabaseDescription;
+    private CancellationTokenSource? _saveDebounceCts;
+    private const int NotebookSaveDebounceMs = 1000;
 
     protected override async Task OnInitializedAsync()
     {
@@ -411,61 +412,68 @@
         }
     }
 
-    /// <summary>Add current editor content and result as a new cell (or empty cell if nothing).</summary>
-    private async Task AddCurrentAsCell()
+    /// <summary>Add a new cell of the given type. Uses current editor content and run result where applicable.</summary>
+    private async Task AddCell(NotebookCellTypeInfo cellType)
     {
         if (_notebook == null) return;
         var content = (_sqlEditorContent ?? "").Trim();
-        var hasChart = _currentRunResult != null && !string.IsNullOrEmpty(_currentRunResult.ChartType);
-        var newCell = new NotebookCellInfo
+        var hasChartResult = _currentRunResult != null && !string.IsNullOrEmpty(_currentRunResult.ChartType);
+
+        var newCell = cellType switch
         {
-            Id = 0,
-            Type = hasChart ? NotebookCellTypeInfo.Chart : NotebookCellTypeInfo.Sql,
-            Content = content,
-            ExecutionResult = _currentRunResult ?? new NotebookCellExecutionResultInfo(),
-            CatalogNodeId = _selectedDatabase?.Id,
-            DatabaseDisplayName = _selectedDatabase?.DatabaseName ?? _selectedDatabase?.Name,
+            NotebookCellTypeInfo.Sql => new NotebookCellInfo
+            {
+                Id = 0,
+                Type = NotebookCellTypeInfo.Sql,
+                Content = content,
+                ExecutionResult = (hasChartResult ? null : _currentRunResult) ?? new NotebookCellExecutionResultInfo(),
+                CatalogNodeId = _selectedDatabase?.Id,
+                DatabaseDisplayName = _selectedDatabase?.DatabaseName ?? _selectedDatabase?.Name,
+            },
+            NotebookCellTypeInfo.Chart => new NotebookCellInfo
+            {
+                Id = 0,
+                Type = NotebookCellTypeInfo.Chart,
+                Content = content,
+                ExecutionResult = _currentRunResult ?? new NotebookCellExecutionResultInfo(),
+                CatalogNodeId = _selectedDatabase?.Id,
+                DatabaseDisplayName = _selectedDatabase?.DatabaseName ?? _selectedDatabase?.Name,
+            },
+            NotebookCellTypeInfo.Markdown => new NotebookCellInfo
+            {
+                Id = 0,
+                Type = NotebookCellTypeInfo.Markdown,
+                Content = content,
+                ExecutionResult = new NotebookCellExecutionResultInfo(),
+            },
+            NotebookCellTypeInfo.Excalidraw => new NotebookCellInfo
+            {
+                Id = 0,
+                Type = NotebookCellTypeInfo.Excalidraw,
+                Content = "{}",
+                ExecutionResult = new NotebookCellExecutionResultInfo(),
+            },
+            _ => new NotebookCellInfo
+            {
+                Id = 0,
+                Type = NotebookCellTypeInfo.Sql,
+                Content = content,
+                ExecutionResult = new NotebookCellExecutionResultInfo(),
+                CatalogNodeId = _selectedDatabase?.Id,
+                DatabaseDisplayName = _selectedDatabase?.DatabaseName ?? _selectedDatabase?.Name,
+            }
         };
+
         _notebook.Cells ??= new List<NotebookCellInfo>();
         _notebook.Cells.Add(newCell);
         var updated = await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
         MergeCellIdsFromResponse(updated);
-        _currentRunResult = null;
-        _sqlEditorContent = "";
-        await InvokeAsync(StateHasChanged);
-    }
 
-    private async Task AddMarkdownCell()
-    {
-        if (_notebook == null) return;
-        var content = _sqlEditorContent?.Trim() ?? "";
-        var newCell = new NotebookCellInfo
+        if (cellType == NotebookCellTypeInfo.Sql || cellType == NotebookCellTypeInfo.Chart || cellType == NotebookCellTypeInfo.Markdown)
         {
-            Id = 0,
-            Type = NotebookCellTypeInfo.Markdown,
-            Content = content,
-            ExecutionResult = new NotebookCellExecutionResultInfo(),
-        };
-        _notebook.Cells ??= new List<NotebookCellInfo>();
-        _notebook.Cells.Add(newCell);
-        _sqlEditorContent = "";
-        _notebook = await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task AddExcalidrawCell()
-    {
-        if (_notebook == null) return;
-        var newCell = new NotebookCellInfo
-        {
-            Id = 0,
-            Type = NotebookCellTypeInfo.Excalidraw,
-            Content = "{}",
-            ExecutionResult = new NotebookCellExecutionResultInfo(),
-        };
-        _notebook.Cells ??= new List<NotebookCellInfo>();
-        _notebook.Cells.Add(newCell);
-        _notebook = await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
+            _currentRunResult = null;
+            _sqlEditorContent = "";
+        }
         await InvokeAsync(StateHasChanged);
     }
 
@@ -542,7 +550,7 @@
             cell = _notebook.Cells.LastOrDefault(c => c.Id == 0);
         if (cell == null) return;
         cell.Content = arg.FormattedContent;
-        await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
+        await ScheduleNotebookSaveDebounced();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -554,15 +562,38 @@
             cell = _notebook.Cells.LastOrDefault(c => c.Id == 0);
         if (cell == null) return;
         cell.Content = arg.Content;
-        await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnExcalidrawSave(int cellId)
+    {
+        if (_notebook == null) return;
+        await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
     }
 
     private async Task SaveNotebookAfterCellUpdate()
     {
         if (_notebook == null) return;
-        await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
+        await ScheduleNotebookSaveDebounced();
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ScheduleNotebookSaveDebounced()
+    {
+        _saveDebounceCts?.Cancel();
+        _saveDebounceCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _saveDebounceCts = cts;
+        try
+        {
+            await Task.Delay(NotebookSaveDebounceMs, cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+        if (cts.IsCancellationRequested || _notebook == null) return;
+        await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
     }
 
     private async Task HandleDeleteCell(NotebookCellInfo cell)
