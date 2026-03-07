@@ -28,27 +28,6 @@ public class WorkspaceManager : IWorkspaceManager
         return list ?? new List<WorkspaceInfo>();
     }
 
-    public async Task<IReadOnlyList<Guid>> GetFavoriteWorkspaceIdsAsync(CancellationToken ct)
-    {
-        var list = await _httpClient.GetFromJsonAsync<List<Guid>>(
-            $"{EndpointsHelper.Workspaces}/favorites", ct);
-        return list ?? new List<Guid>();
-    }
-
-    public async Task AddFavoriteAsync(Guid workspaceId, CancellationToken ct)
-    {
-        var route = $"{EndpointsHelper.Workspaces}/favorites/{workspaceId:N}";
-        using var response = await _httpClient.PostAsync(route, null, ct);
-        await response.ManagementServiceEnsureSuccessStatusCode();
-    }
-
-    public async Task RemoveFavoriteAsync(Guid workspaceId, CancellationToken ct)
-    {
-        var route = $"{EndpointsHelper.Workspaces}/favorites/{workspaceId:N}";
-        using var response = await _httpClient.DeleteAsync(route, ct);
-        await response.ManagementServiceEnsureSuccessStatusCode();
-    }
-
     public async Task<WorkspaceInfo?> GetWorkspace(Guid workspaceId, CancellationToken ct)
     {
         var route = $"{EndpointsHelper.Workspaces}/{workspaceId:N}";

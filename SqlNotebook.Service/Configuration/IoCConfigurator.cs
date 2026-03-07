@@ -27,8 +27,8 @@ internal static class IoCConfigurator
         });
 
         services.AddScoped<INotebookRepository, NotebookRepository>();
+        services.AddScoped<INotebookFavoritesRepository, NotebookFavoritesRepository>();
         services.AddScoped<IWorkspaceRepository, WorkspaceRepository>();
-        services.AddScoped<IWorkspaceFavoritesRepository, WorkspaceFavoritesRepository>();
         services.AddScoped<IAiAssistMessageRepository, AiAssistMessageRepository>();
         services.AddScoped<IAiAssistSessionRepository, AiAssistSessionRepository>();
         services.AddScoped<IUserRepository, UserRepository>();

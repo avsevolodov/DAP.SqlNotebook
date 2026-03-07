@@ -9,7 +9,7 @@
 @using MudBlazor
 
 <div class="workspaces-tree pa-2">
-    @* Section: Favorites *@
+    @* Section: Favorites (notebooks only; folders can be created here) *@
     <div class="workspaces-tree-row workspaces-tree-section"
          style="padding-left: 4px; cursor: pointer;"
          @onclick="@(() => _favoritesSectionExpanded = !_favoritesSectionExpanded)">
@@ -19,25 +19,93 @@
     </div>
     @if (_favoritesSectionExpanded)
     {
-        @if (_loading && _favoriteWorkspaces.Count == 0)
+        @if (_loadingFavorites && _favoriteNotebooks.Count == 0 && _favoriteFolders.Count == 0)
         {
             <MudProgressLinear Color="Color.Primary" Indeterminate="true" Style="height: 2px; margin-left: 28px;" />
         }
-        @foreach (var ws in _favoriteWorkspaces)
+        else
         {
-            <WorkspaceTreeNode Node="@ws"
-                              AllNodes="@_treeNodes"
-                              Expanded="@_expanded"
-                              PaddingLeft="24"
-                              ToggleExpand="@OnToggleExpand"
-                              NotebooksByWorkspace="@_notebooksByWorkspace"
-                              LoadingNotebooks="@_loadingNotebooks"
-                              FavoriteIds="@_favoriteIds"
-                              ToggleFavorite="@OnToggleFavorite" />
-        }
-        @if (!_loading && _favoriteWorkspaces.Count == 0)
-        {
-            <div class="workspaces-tree-row" style="padding-left: 28px; color: var(--mud-palette-text-secondary); font-size: 0.875rem;">No favorites. Click the star on a workspace to add it.</div>
+            @* Root notebooks (no folder) *@
+            @foreach (var item in _favoriteNotebooks.Where(x => x.FolderId == null).OrderBy(x => x.Name))
+            {
+                <div class="workspaces-tree-row workspaces-tree-notebook" style="padding-left: 28px; min-height: 28px;">
+                    <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-secondary); font-size: 20px;" aria-hidden="true">menu_book</span>
+                    <a href="@MainRoutes.GetNotebookRoute(item.NotebookId)" class="workspaces-tree-name" title="@item.Name">@item.Name</a>
+                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" IconColor="Color.Default" Size="Size.Small" Dense="true" Style="margin-left: auto;">
+                        <MudMenuItem Icon="@Icons.Material.Filled.Folder" OnClick="@(() => OnMoveNotebookToFolder(item.NotebookId, null))">Root</MudMenuItem>
+                        @foreach (var f in _favoriteFolders.OrderBy(x => x.Name))
+                        {
+                            <MudMenuItem Icon="@Icons.Material.Filled.Folder" OnClick="@(() => OnMoveNotebookToFolder(item.NotebookId, f.Id))">@f.Name</MudMenuItem>
+                        }
+                        <MudDivider />
+                        <MudMenuItem Icon="@Icons.Material.Filled.StarBorder" OnClick="@(() => OnRemoveNotebookFavorite(item.NotebookId))">Remove from favorites</MudMenuItem>
+                    </MudMenu>
+                </div>
+            }
+            @* Root folders and their content *@
+            @foreach (var folder in _favoriteFolders.Where(x => x.ParentId == null).OrderBy(x => x.Name))
+            {
+                var expanded = _favoritesExpandedFolders.Contains(folder.Id);
+                <div class="workspaces-tree-row" style="padding-left: 28px; cursor: pointer;" @onclick="@(() => ToggleFavoritesFolder(folder.Id))">
+                    <span class="material-icons workspaces-tree-icon" aria-hidden="true">@(expanded ? "expand_more" : "chevron_right")</span>
+                    <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-primary);" aria-hidden="true">folder</span>
+                    <span class="workspaces-tree-name" style="font-weight: 500;">@folder.Name</span>
+                </div>
+                @if (expanded)
+                {
+                    @foreach (var sub in _favoriteFolders.Where(x => x.ParentId == folder.Id).OrderBy(x => x.Name))
+                    {
+                        var subExpanded = _favoritesExpandedFolders.Contains(sub.Id);
+                        <div class="workspaces-tree-row" style="padding-left: 52px; cursor: pointer;" @onclick="@(() => ToggleFavoritesFolder(sub.Id))">
+                            <span class="material-icons workspaces-tree-icon" aria-hidden="true">@(subExpanded ? "expand_more" : "chevron_right")</span>
+                            <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-primary);" aria-hidden="true">folder</span>
+                            <span class="workspaces-tree-name">@sub.Name</span>
+                        </div>
+                        @if (subExpanded)
+                        {
+                            @foreach (var nb in _favoriteNotebooks.Where(x => x.FolderId == sub.Id).OrderBy(x => x.Name))
+                            {
+                                <div class="workspaces-tree-row workspaces-tree-notebook" style="padding-left: 76px; min-height: 28px;">
+                                    <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-secondary); font-size: 20px;" aria-hidden="true">menu_book</span>
+                                    <a href="@MainRoutes.GetNotebookRoute(nb.NotebookId)" class="workspaces-tree-name">@nb.Name</a>
+                                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" IconColor="Color.Default" Size="Size.Small" Dense="true" Style="margin-left: auto;">
+                                        <MudMenuItem Icon="@Icons.Material.Filled.Folder" OnClick="@(() => OnMoveNotebookToFolder(nb.NotebookId, null))">Root</MudMenuItem>
+                                        @foreach (var f in _favoriteFolders.OrderBy(x => x.Name))
+                                        {
+                                            <MudMenuItem Icon="@Icons.Material.Filled.Folder" OnClick="@(() => OnMoveNotebookToFolder(nb.NotebookId, f.Id))">@f.Name</MudMenuItem>
+                                        }
+                                        <MudDivider />
+                                        <MudMenuItem Icon="@Icons.Material.Filled.StarBorder" OnClick="@(() => OnRemoveNotebookFavorite(nb.NotebookId))">Remove from favorites</MudMenuItem>
+                                    </MudMenu>
+                                </div>
+                            }
+                        }
+                    }
+                    @foreach (var nb in _favoriteNotebooks.Where(x => x.FolderId == folder.Id).OrderBy(x => x.Name))
+                    {
+                        <div class="workspaces-tree-row workspaces-tree-notebook" style="padding-left: 52px; min-height: 28px;">
+                            <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-secondary); font-size: 20px;" aria-hidden="true">menu_book</span>
+                            <a href="@MainRoutes.GetNotebookRoute(nb.NotebookId)" class="workspaces-tree-name">@nb.Name</a>
+                            <MudMenu Icon="@Icons.Material.Filled.MoreVert" IconColor="Color.Default" Size="Size.Small" Dense="true" Style="margin-left: auto;">
+                                <MudMenuItem Icon="@Icons.Material.Filled.Folder" OnClick="@(() => OnMoveNotebookToFolder(nb.NotebookId, null))">Root</MudMenuItem>
+                                @foreach (var f in _favoriteFolders.OrderBy(x => x.Name))
+                                {
+                                    <MudMenuItem Icon="@Icons.Material.Filled.Folder" OnClick="@(() => OnMoveNotebookToFolder(nb.NotebookId, f.Id))">@f.Name</MudMenuItem>
+                                }
+                                <MudDivider />
+                                <MudMenuItem Icon="@Icons.Material.Filled.StarBorder" OnClick="@(() => OnRemoveNotebookFavorite(nb.NotebookId))">Remove from favorites</MudMenuItem>
+                            </MudMenu>
+                        </div>
+                    }
+                }
+            }
+            <div class="workspaces-tree-row" style="padding-left: 28px;">
+                <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.CreateNewFolder" Color="Color.Primary" OnClick="@OnCreateFolder" Style="text-transform: none;">New folder</MudButton>
+            </div>
+            @if (!_loadingFavorites && _favoriteNotebooks.Count == 0 && _favoriteFolders.Count == 0)
+            {
+                <div class="workspaces-tree-row" style="padding-left: 28px; color: var(--mud-palette-text-secondary); font-size: 0.875rem;">Click the star on a notebook in the tree to add it here.</div>
+            }
         }
     }
 
@@ -64,8 +132,8 @@
                               ToggleExpand="@OnToggleExpand"
                               NotebooksByWorkspace="@_notebooksByWorkspace"
                               LoadingNotebooks="@_loadingNotebooks"
-                              FavoriteIds="@_favoriteIds"
-                              ToggleFavorite="@OnToggleFavorite" />
+                              FavoriteNotebookIds="@_favoriteNotebookIds"
+                              ToggleNotebookFavorite="@OnToggleNotebookFavorite" />
         }
         @if (!_loading && _myWorkspacesOnly.Count == 0)
         {
@@ -96,8 +164,8 @@
                               ToggleExpand="@OnToggleExpand"
                               NotebooksByWorkspace="@_notebooksByWorkspace"
                               LoadingNotebooks="@_loadingNotebooks"
-                              FavoriteIds="@_favoriteIds"
-                              ToggleFavorite="@OnToggleFavorite" />
+                              FavoriteNotebookIds="@_favoriteNotebookIds"
+                              ToggleNotebookFavorite="@OnToggleNotebookFavorite" />
         }
         @if (!_loading && _treeNodes.Count == 0)
         {
@@ -109,17 +177,19 @@
 @code {
     [Inject] private IWorkspaceManager WorkspaceManager { get; set; } = null!;
     [Inject] private INotebookManager NotebookManager { get; set; } = null!;
-    [Inject] private IWorkspaceFavoritesService FavoritesService { get; set; } = null!;
+    [Inject] private INotebookFavoritesService FavoritesService { get; set; } = null!;
+    [Inject] private IJSRuntime JSRuntime { get; set; } = null!;
 
     private List<WorkspaceInfo> _myNodes = new();
     private List<WorkspaceInfo> _treeNodes = new();
-    private HashSet<Guid> _favoriteIds = new();
-    /// <summary>Workspaces (not folders) that are in favorites, by name.</summary>
-    private List<WorkspaceInfo> _favoriteWorkspaces => _allWorkspacesById.Values.Where(x => _favoriteIds.Contains(x.Id)).OrderBy(x => x.Name).ToList();
+    private List<FavoriteFolderInfo> _favoriteFolders = new();
+    private List<FavoriteNotebookItemInfo> _favoriteNotebooks = new();
+    private HashSet<Guid> _favoriteNotebookIds = new();
+    private readonly HashSet<Guid> _favoritesExpandedFolders = new();
+    private bool _loadingFavorites = true;
     /// <summary>My workspaces: flat list (no folders), all shown.</summary>
     private List<WorkspaceInfo> _myWorkspacesOnly => _myNodes.Where(x => !x.IsFolder).OrderBy(x => x.Name).ToList();
     private List<WorkspaceInfo> _rootNodes => _treeNodes.Where(x => x.ParentId == null).OrderBy(x => x.Name).ToList();
-    private Dictionary<Guid, WorkspaceInfo> _allWorkspacesById => _treeNodes.Concat(_myNodes).Where(x => !x.IsFolder).GroupBy(x => x.Id).ToDictionary(g => g.Key, g => g.First());
     private readonly HashSet<Guid> _expanded = new();
     private readonly Dictionary<Guid, List<NotebookMetaInfo>> _notebooksByWorkspace = new();
     private Guid? _loadingNotebooks;
@@ -140,23 +210,15 @@
         {
             var myTask = WorkspaceManager.GetWorkspaces(CancellationToken.None);
             var treeTask = WorkspaceManager.GetTreeAsync(CancellationToken.None);
-            var favoritesTask = FavoritesService.GetFavoriteIdsAsync();
-            await Task.WhenAll(myTask, treeTask, favoritesTask);
+            await Task.WhenAll(myTask, treeTask);
             _myNodes = (await myTask).ToList();
             _treeNodes = (await treeTask).ToList();
-            _favoriteIds = await favoritesTask;
+            await LoadFavorites();
         }
         finally
         {
             _loading = false;
         }
-    }
-
-    private async Task OnToggleFavorite(Guid workspaceId)
-    {
-        await FavoritesService.ToggleFavoriteAsync(workspaceId);
-        _favoriteIds = await FavoritesService.GetFavoriteIdsAsync();
-        StateHasChanged();
     }
 
     private async Task OnToggleExpand(Guid id)
@@ -191,5 +253,66 @@
             _loadingNotebooks = null;
             StateHasChanged();
         }
+    }
+
+    private async Task LoadFavorites()
+    {
+        _loadingFavorites = true;
+        try
+        {
+            var idsTask = FavoritesService.GetFavoriteNotebookIdsAsync();
+            var foldersTask = FavoritesService.GetFoldersAsync();
+            var notebooksTask = FavoritesService.GetFavoriteNotebooksAsync();
+            await Task.WhenAll(idsTask, foldersTask, notebooksTask);
+            _favoriteNotebookIds = await idsTask;
+            _favoriteFolders = (await foldersTask).ToList();
+            _favoriteNotebooks = (await notebooksTask).ToList();
+        }
+        finally
+        {
+            _loadingFavorites = false;
+        }
+    }
+
+    private void ToggleFavoritesFolder(Guid folderId)
+    {
+        if (_favoritesExpandedFolders.Contains(folderId))
+            _favoritesExpandedFolders.Remove(folderId);
+        else
+            _favoritesExpandedFolders.Add(folderId);
+        StateHasChanged();
+    }
+
+    private async Task OnToggleNotebookFavorite(Guid notebookId)
+    {
+        await FavoritesService.ToggleNotebookFavoriteAsync(notebookId);
+        _favoriteNotebookIds = await FavoritesService.GetFavoriteNotebookIdsAsync();
+        await LoadFavorites();
+        StateHasChanged();
+    }
+
+    private async Task OnRemoveNotebookFavorite(Guid notebookId)
+    {
+        await FavoritesService.RemoveNotebookFromFavoritesAsync(notebookId);
+        _favoriteNotebookIds = await FavoritesService.GetFavoriteNotebookIdsAsync();
+        await LoadFavorites();
+        StateHasChanged();
+    }
+
+    private async Task OnMoveNotebookToFolder(Guid notebookId, Guid? folderId)
+    {
+        await FavoritesService.SetNotebookFolderAsync(notebookId, folderId);
+        await LoadFavorites();
+        StateHasChanged();
+    }
+
+    private async Task OnCreateFolder()
+    {
+        var name = await JSRuntime.InvokeAsync<string?>("prompt", "Folder name", "My folder");
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+        await FavoritesService.CreateFolderAsync(name.Trim(), null);
+        await LoadFavorites();
+        StateHasChanged();
     }
 }

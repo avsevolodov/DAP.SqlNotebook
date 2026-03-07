@@ -27,23 +27,18 @@
                                  ToggleExpand="@ToggleExpand"
                                  NotebooksByWorkspace="@NotebooksByWorkspace"
                                  LoadingNotebooks="@LoadingNotebooks"
-                                 FavoriteIds="@FavoriteIds"
-                                 ToggleFavorite="@ToggleFavorite" />
+                                 FavoriteNotebookIds="@FavoriteNotebookIds"
+                                 ToggleNotebookFavorite="@ToggleNotebookFavorite" />
             }
         }
     }
     else
     {
         var expanded = Expanded.Contains(Node.Id);
-        var isFavorite = FavoriteIds?.Contains(Node.Id) ?? false;
         <div class="workspaces-tree-row" style="@($"padding-left: {PaddingLeft}px;")" @onclick="@HandleToggle">
             <span class="material-icons workspaces-tree-icon" aria-hidden="true">@(expanded ? "expand_more" : "chevron_right")</span>
             <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-primary);" aria-hidden="true">folder_open</span>
             <a href="@MainRoutes.GetNotebooksRoute(Node.Id)" class="workspaces-tree-name" @onclick:stopPropagation="true">@(Node.Name ?? "Workspace")</a>
-            @if (FavoriteIds != null)
-            {
-                <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-warning); margin-left: auto; cursor: pointer; font-size: 18px;" aria-hidden="true" title="@(isFavorite ? "Remove from favorites" : "Add to favorites")" @onclick="@HandleToggleFavorite" @onclick:stopPropagation="true">@(isFavorite ? "star" : "star_border")</span>
-            }
         </div>
         @if (expanded)
         {
@@ -58,9 +53,14 @@
                 {
                     @foreach (var nb in notebooks)
                     {
+                        var isFav = FavoriteNotebookIds?.Contains(nb.Id) ?? false;
                         <div class="workspaces-tree-row workspaces-tree-notebook" style="@($"padding-left: {PaddingLeft + 24}px; min-height: 28px;")">
                             <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-secondary); font-size: 20px;" aria-hidden="true">menu_book</span>
                             <a href="@MainRoutes.GetNotebookRoute(nb.Id)" class="workspaces-tree-name" title="@nb.Name">@nb.Name</a>
+                            @if (FavoriteNotebookIds != null)
+                            {
+                                <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-warning); margin-left: auto; cursor: pointer; font-size: 18px;" aria-hidden="true" title="@(isFav ? "Remove from favorites" : "Add to favorites")" @onclick="@(() => HandleToggleNotebookFavorite(nb.Id))" @onclick:stopPropagation="true">@(isFav ? "star" : "star_border")</span>
+                            }
                         </div>
                     }
                     @if (notebooks.Count == 0)
@@ -81,14 +81,14 @@
     [Parameter] public EventCallback<Guid> ToggleExpand { get; set; }
     [Parameter] public IReadOnlyDictionary<Guid, List<NotebookMetaInfo>> NotebooksByWorkspace { get; set; } = null!;
     [Parameter] public Guid? LoadingNotebooks { get; set; }
-    [Parameter] public HashSet<Guid>? FavoriteIds { get; set; }
-    [Parameter] public EventCallback<Guid> ToggleFavorite { get; set; }
+    /// <summary>When set, show star on each notebook row to add/remove from favorites.</summary>
+    [Parameter] public HashSet<Guid>? FavoriteNotebookIds { get; set; }
+    [Parameter] public EventCallback<Guid> ToggleNotebookFavorite { get; set; }
 
     private async Task HandleToggle() => await ToggleExpand.InvokeAsync(Node.Id);
 
-    private async Task HandleToggleFavorite()
+    private async Task HandleToggleNotebookFavorite(Guid notebookId)
     {
-        if (FavoriteIds != null)
-            await ToggleFavorite.InvokeAsync(Node.Id);
+        await ToggleNotebookFavorite.InvokeAsync(notebookId);
     }
 }

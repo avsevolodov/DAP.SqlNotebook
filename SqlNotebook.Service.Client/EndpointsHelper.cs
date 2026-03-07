@@ -9,6 +9,7 @@ namespace DAP.SqlNotebook.Service.Client
         public const string Catalog = "api/v1/catalog";
         public const string AiAssist = "api/v1/ai/assist";
         public const string AiSql = "api/v1/ai/sql";
+        public const string Favorites = "api/v1/favorites";
 
         public static string AiAssistSessions(Guid? notebookId = null)
             => notebookId.HasValue ? $"{AiAssist}/sessions?notebookId={notebookId.Value:N}" : $"{AiAssist}/sessions";
@@ -70,5 +71,11 @@ namespace DAP.SqlNotebook.Service.Client
 
         public static string GetWorkspaceByIdRoute(Guid workspaceId)
             => $"{Workspaces}/{workspaceId}";
+
+        public static string FavoritesFolders() => $"{Favorites}/folders";
+        public static string FavoritesNotebooks() => $"{Favorites}/notebooks";
+        public static string FavoritesNotebookIds() => $"{Favorites}/notebooks/ids";
+        public static string FavoritesNotebook(Guid notebookId) => $"{Favorites}/notebooks/{notebookId:N}";
+        public static string FavoritesNotebookFolder(Guid notebookId) => $"{Favorites}/notebooks/{notebookId:N}/folder";
     }
 }

@@ -14,7 +14,8 @@ namespace DAP.SqlNotebook.BL.DataAccess
         public DbSet<NotebookEntity> Notebooks => Set<NotebookEntity>();
         public DbSet<NotebookCellEntity> NotebookCells => Set<NotebookCellEntity>();
         public DbSet<WorkspaceEntity> Workspaces => Set<WorkspaceEntity>();
-        public DbSet<UserWorkspaceFavoriteEntity> UserWorkspaceFavorites => Set<UserWorkspaceFavoriteEntity>();
+        public DbSet<UserFavoriteFolderEntity> UserFavoriteFolders => Set<UserFavoriteFolderEntity>();
+        public DbSet<UserNotebookFavoriteEntity> UserNotebookFavorites => Set<UserNotebookFavoriteEntity>();
 
         public DbSet<DbEntityDescription> DbEntities => Set<DbEntityDescription>();
         public DbSet<DbFieldDescription> DbFields => Set<DbFieldDescription>();
@@ -151,15 +152,29 @@ namespace DAP.SqlNotebook.BL.DataAccess
                 e.Property(x => x.Role).HasMaxLength(32);
             });
 
-            modelBuilder.Entity<UserWorkspaceFavoriteEntity>(e =>
+            modelBuilder.Entity<UserFavoriteFolderEntity>(e =>
             {
-                e.HasKey(x => new { x.UserLogin, x.WorkspaceId });
+                e.HasKey(x => x.Id);
+                e.Property(x => x.UserLogin).HasMaxLength(256);
+                e.Property(x => x.Name).HasMaxLength(256);
+                e.HasIndex(x => x.UserLogin);
+                e.HasIndex(x => x.ParentId);
+            });
+
+            modelBuilder.Entity<UserNotebookFavoriteEntity>(e =>
+            {
+                e.HasKey(x => new { x.UserLogin, x.NotebookId });
                 e.Property(x => x.UserLogin).HasMaxLength(256);
                 e.HasIndex(x => x.UserLogin);
-                e.HasOne<WorkspaceEntity>()
+                e.HasIndex(x => x.FolderId);
+                e.HasOne<NotebookEntity>()
                     .WithMany()
-                    .HasForeignKey(x => x.WorkspaceId)
+                    .HasForeignKey(x => x.NotebookId)
                     .OnDelete(DeleteBehavior.Cascade);
+                e.HasOne<UserFavoriteFolderEntity>()
+                    .WithMany()
+                    .HasForeignKey(x => x.FolderId)
+                    .OnDelete(DeleteBehavior.SetNull);
             });
         }
     }

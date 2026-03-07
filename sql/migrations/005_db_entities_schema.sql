@@ -1,5 +1,4 @@
 -- Add SchemaName to DbEntities (e.g. dbo, sys) for table schema display.
--- Run after 004_user_workspace_favorites.sql.
 
 SET NOCOUNT ON;
 GO

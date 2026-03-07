@@ -8,10 +8,6 @@ public interface IWorkspaceManager
     Task<IReadOnlyList<WorkspaceInfo>> GetWorkspaces(CancellationToken ct);
     /// <summary>All nodes for the common workspace tree (hierarchy with folders).</summary>
     Task<IReadOnlyList<WorkspaceInfo>> GetTreeAsync(CancellationToken ct);
-    /// <summary>Current user's favorite workspace IDs (server-side).</summary>
-    Task<IReadOnlyList<Guid>> GetFavoriteWorkspaceIdsAsync(CancellationToken ct);
-    Task AddFavoriteAsync(Guid workspaceId, CancellationToken ct);
-    Task RemoveFavoriteAsync(Guid workspaceId, CancellationToken ct);
     Task<WorkspaceInfo?> GetWorkspace(Guid workspaceId, CancellationToken ct);
     Task<WorkspaceInfo> CreateWorkspace(WorkspaceInfo workspace, CancellationToken ct);
     Task<WorkspaceInfo> UpdateWorkspace(Guid id, WorkspaceInfo workspace, CancellationToken ct);

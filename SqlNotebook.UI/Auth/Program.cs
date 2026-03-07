@@ -42,7 +42,7 @@ namespace DAP.SqlNotebook.UI
             builder.Services.AddScoped<ICurrentNotebookContext, CurrentNotebookContext>();
             builder.Services.AddScoped<ICurrentDatabaseContext, CurrentDatabaseContext>();
             builder.Services.AddScoped<INotebookToolbarService, NotebookToolbarService>();
-            builder.Services.AddScoped<IWorkspaceFavoritesService, WorkspaceFavoritesService>();
+            builder.Services.AddScoped<INotebookFavoritesService, NotebookFavoritesService>();
 
             // builder.Services.AddScoped<IConnectionManager, ConnectionManager>();
 

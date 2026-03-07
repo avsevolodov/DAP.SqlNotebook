@@ -10,6 +10,7 @@ public static class ServiceCollectionExtensions
         return services
             .AddScoped<INotebookManager, NotebookManager>()
             .AddScoped<IWorkspaceManager, WorkspaceManager>()
+            .AddScoped<INotebookFavoritesClient, NotebookFavoritesClient>()
             .AddScoped<ICatalogManager, CatalogManager>()
             .AddScoped<IAiAssistClient, AiAssistClient>()
             .AddScoped<IAiSqlClient, AiSqlClient>();

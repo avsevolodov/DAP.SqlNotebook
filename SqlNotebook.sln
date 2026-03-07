@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36804.6
@@ -35,6 +35,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "sql", "sql", "{D1A1F4C9-7F6
 		sql\migrations\002_kafka_consumer_group.sql = sql\migrations\002_kafka_consumer_group.sql
 		sql\migrations\003_workspace_hierarchy.sql = sql\migrations\003_workspace_hierarchy.sql
 		sql\migrations\004_user_workspace_favorites.sql = sql\migrations\004_user_workspace_favorites.sql
+		sql\migrations\005_db_entities_schema.sql = sql\migrations\005_db_entities_schema.sql
+		sql\migrations\006_drop_user_workspace_favorites.sql = sql\migrations\006_drop_user_workspace_favorites.sql
+		sql\migrations\007_notebook_favorites.sql = sql\migrations\007_notebook_favorites.sql
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "AI", "AI", "{18E2B2E1-982C-4991-A24C-3B91EF3A11A2}"

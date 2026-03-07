@@ -18,16 +18,13 @@ namespace DAP.SqlNotebook.Service.Controllers;
 public class WorkspacesController : ControllerBase
 {
     private readonly IWorkspaceRepository _workspaceRepository;
-    private readonly IWorkspaceFavoritesRepository _favoritesRepository;
     private readonly IMapper _mapper;
 
     public WorkspacesController(
         IWorkspaceRepository workspaceRepository,
-        IWorkspaceFavoritesRepository favoritesRepository,
         IMapper mapper)
     {
         _workspaceRepository = workspaceRepository ?? throw new ArgumentNullException(nameof(workspaceRepository));
-        _favoritesRepository = favoritesRepository ?? throw new ArgumentNullException(nameof(favoritesRepository));
         _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
     }
 
@@ -39,40 +36,6 @@ public class WorkspacesController : ControllerBase
         var entities = await _workspaceRepository.GetByOwnerAsync(login, ct).ConfigureAwait(false);
         var list = entities.Select(e => _mapper.Map<WorkspaceInfo>(e)).ToList();
         return Ok(list);
-    }
-
-    /// <summary>Current user's favorite workspace IDs.</summary>
-    [HttpGet("favorites")]
-    public async Task<ActionResult<IReadOnlyList<Guid>>> GetFavorites(CancellationToken ct)
-    {
-        var login = User.Identity?.Name;
-        if (string.IsNullOrWhiteSpace(login))
-            return Ok(Array.Empty<Guid>());
-        var ids = await _favoritesRepository.GetByUserAsync(login, ct).ConfigureAwait(false);
-        return Ok(ids);
-    }
-
-    [HttpPost("favorites/{workspaceId:guid}")]
-    public async Task<ActionResult> AddFavorite(Guid workspaceId, CancellationToken ct)
-    {
-        var login = User.Identity?.Name;
-        if (string.IsNullOrWhiteSpace(login))
-            return Unauthorized();
-        var workspace = await _workspaceRepository.GetByIdAsync(workspaceId, ct).ConfigureAwait(false);
-        if (workspace == null)
-            return NotFound();
-        await _favoritesRepository.AddAsync(login, workspaceId, ct).ConfigureAwait(false);
-        return NoContent();
-    }
-
-    [HttpDelete("favorites/{workspaceId:guid}")]
-    public async Task<ActionResult> RemoveFavorite(Guid workspaceId, CancellationToken ct)
-    {
-        var login = User.Identity?.Name;
-        if (string.IsNullOrWhiteSpace(login))
-            return Unauthorized();
-        await _favoritesRepository.RemoveAsync(login, workspaceId, ct).ConfigureAwait(false);
-        return NoContent();
     }
 
     /// <summary>All workspace/folder nodes for the common tree (hierarchy with folders).</summary>
