@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Excalidraw — Diagram</title>
+    <style>
+        body { margin: 0; height: 100vh; }
+        #root { height: 100%; }
+    </style>
+    <script>
+        window.EXCALIDRAW_ASSET_PATH = "https://esm.sh/@excalidraw/excalidraw@0.18.0/dist/prod/";
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module">
+        import React from "https://esm.sh/react@18.2.0";
+        import { createRoot } from "https://esm.sh/react-dom@18.2.0/client";
+        import { Excalidraw } from "https://esm.sh/@excalidraw/excalidraw@0.18.0";
+        import "https://esm.sh/@excalidraw/excalidraw@0.18.0/dist/excalidraw.prod.min.css";
+
+        let initialData = null;
+        let pendingSet = null;
+
+        window.addEventListener("message", function (event) {
+            if (event.data?.type === "excalidraw-set") {
+                try {
+                    const payload = typeof event.data.content === "string" ? JSON.parse(event.data.content) : event.data.content;
+                    if (payload && (payload.elements || payload.appState)) {
+                        initialData = payload;
+                        if (window.__excalidrawUpdateScene) {
+                            window.__excalidrawUpdateScene(payload);
+                        } else {
+                            pendingSet = payload;
+                        }
+                    }
+                } catch (e) { console.warn("excalidraw-set parse error", e); }
+            }
+        });
+
+        function sendToParent(content) {
+            if (window.parent !== window) {
+                window.parent.postMessage({ type: "excalidraw-change", content: content }, "*");
+            }
+        }
+
+        const rootEl = document.getElementById("root");
+        const root = createRoot(rootEl);
+        root.render(React.createElement(Excalidraw, {
+            initialData: initialData,
+            excalidrawAPI: (api) => {
+                window.__excalidrawAPI = api;
+                window.__excalidrawUpdateScene = (data) => {
+                    if (api && data && (data.elements || data.appState)) api.updateScene(data);
+                };
+                if (pendingSet) {
+                    window.__excalidrawUpdateScene(pendingSet);
+                    pendingSet = null;
+                }
+            },
+            onChange: (elements, appState, files) => {
+                const payload = { elements, appState };
+                sendToParent(JSON.stringify(payload));
+            }
+        }));
+    </script>
+</body>
+</html>

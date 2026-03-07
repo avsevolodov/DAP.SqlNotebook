@@ -62,11 +62,13 @@
                               OnRunAsChart="RunQueryAsChart"
                               OnAddNewCell="AddCurrentAsCell"
                               OnAddMarkdown="AddMarkdownCell"
+                              OnAddExcalidraw="AddExcalidrawCell"
                               OnInsertIntoEditor="InsertIntoEditor"
                               ExecutionError="@_executionError"
                               ExecutionErrorChanged="OnExecutionErrorChanged"
                               OnChartTypeChanged="OnCellChartTypeChanged"
                               OnFormatCell="OnCellFormat"
+                              OnExcalidrawContentChanged="OnExcalidrawContentChanged"
                               OnDeleteCell="HandleDeleteCell"
                               OnCellUpdated="SaveNotebookAfterCellUpdate" />
             }
@@ -448,6 +450,22 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    private async Task AddExcalidrawCell()
+    {
+        if (_notebook == null) return;
+        var newCell = new NotebookCellInfo
+        {
+            Id = 0,
+            Type = NotebookCellTypeInfo.Excalidraw,
+            Content = "{}",
+            ExecutionResult = new NotebookCellExecutionResultInfo(),
+        };
+        _notebook.Cells ??= new List<NotebookCellInfo>();
+        _notebook.Cells.Add(newCell);
+        _notebook = await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
+        await InvokeAsync(StateHasChanged);
+    }
+
     private async Task InsertIntoEditor(string text)
     {
         await CatalogInsertService.PasteToEditorAsync(text ?? "");
@@ -521,6 +539,18 @@
             cell = _notebook.Cells.LastOrDefault(c => c.Id == 0);
         if (cell == null) return;
         cell.Content = arg.FormattedContent;
+        await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnExcalidrawContentChanged((int CellId, string Content) arg)
+    {
+        if (_notebook?.Cells == null) return;
+        var cell = _notebook.Cells.FirstOrDefault(c => c.Id == arg.CellId);
+        if (cell == null && arg.CellId == 0)
+            cell = _notebook.Cells.LastOrDefault(c => c.Id == 0);
+        if (cell == null) return;
+        cell.Content = arg.Content;
         await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
         await InvokeAsync(StateHasChanged);
     }

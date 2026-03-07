@@ -36,6 +36,13 @@
                                               OnInsertIntoEditor="OnInsertIntoEditor"
                                               OnCellUpdated="OnCellUpdated" />
                 }
+                else if (cell.Type == NotebookCellTypeInfo.Excalidraw)
+                {
+                    <NotebookExcalidrawCell Cell="cell"
+                                            OnDeleteCell="OnDeleteCell"
+                                            OnExcalidrawContentChanged="OnExcalidrawContentChanged"
+                                            OnCellUpdated="OnCellUpdated" />
+                }
             }
         </MudStack>
     }
@@ -55,6 +62,7 @@
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleRun" StartIcon="@Icons.Material.Filled.PlayArrow">Run</MudButton>
                     <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="HandleRunAsChart" StartIcon="@Icons.Material.Filled.BarChart">Run as chart</MudButton>
                     <MudButton Variant="Variant.Outlined" OnClick="HandleAddMarkdown" StartIcon="@Icons.Material.Filled.TextFields">Add Markdown</MudButton>
+                    <MudButton Variant="Variant.Outlined" OnClick="HandleAddExcalidraw" StartIcon="@Icons.Material.Filled.Gesture">Add Excalidraw</MudButton>
                     <MudButton Variant="Variant.Outlined" OnClick="HandleFormatSql" StartIcon="@Icons.Material.Filled.FormatAlignLeft" Title="Format SQL">Format SQL</MudButton>
                 }
                 <MudMenu Open="_settingsOpen" OpenChanged="e => _settingsOpen = e" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
@@ -120,11 +128,13 @@
     [Parameter] public EventCallback OnRunAsChart { get; set; }
     [Parameter] public EventCallback OnAddNewCell { get; set; }
     [Parameter] public EventCallback OnAddMarkdown { get; set; }
+    [Parameter] public EventCallback OnAddExcalidraw { get; set; }
     [Parameter] public EventCallback<string> OnInsertIntoEditor { get; set; }
     [Parameter] public string? ExecutionError { get; set; }
     [Parameter] public EventCallback<string?> ExecutionErrorChanged { get; set; }
     [Parameter] public EventCallback<(int CellId, string ChartType)> OnChartTypeChanged { get; set; }
     [Parameter] public EventCallback<(int CellId, string FormattedContent)> OnFormatCell { get; set; }
+    [Parameter] public EventCallback<(int CellId, string Content)> OnExcalidrawContentChanged { get; set; }
     [Parameter] public EventCallback<NotebookCellInfo> OnDeleteCell { get; set; }
     [Parameter] public EventCallback OnCellUpdated { get; set; }
 
@@ -255,6 +265,13 @@
     {
         await FlushEditorContent();
         await OnAddMarkdown.InvokeAsync();
+    }
+
+    private async Task HandleAddExcalidraw()
+    {
+        await FlushEditorContent();
+        if (OnAddExcalidraw.HasDelegate)
+            await OnAddExcalidraw.InvokeAsync();
     }
 
     private async Task HandleFormatSql()
