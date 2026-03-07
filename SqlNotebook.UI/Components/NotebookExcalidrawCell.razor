@@ -6,14 +6,42 @@
 @using MudBlazor
 @implements IDisposable
 
-<MudPaper Class="pa-3 notebook-cell-paper" Elevation="1" Outlined="true">
-    <MudStack Spacing="1">
+<MudPaper Class="@($"pa-3 notebook-cell-paper {( _isFullscreen ? "notebook-cell-fullscreen" : string.Empty)}")"
+          Elevation="1"
+          Outlined="true"
+          Style="@(_isFullscreen
+              ? "position:fixed; inset:0; z-index:1300; margin:0; border-radius:0; background-color: var(--mud-palette-background);"
+              : null)">
+    <MudStack Spacing="1" Style="@(_isFullscreen ? "height:100%; align-items:stretch;" : null)">
         <div class="notebook-cell-code-header d-flex align-items-center" style="gap: 8px;">
             <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Title="Delete cell" OnClick="DeleteCell" />
-            <MudIconButton Icon="@Icons.Material.Filled.Fullscreen" Size="Size.Small" Title="Развернуть во весь экран" OnClick="OpenFullscreen" />
+            <MudIconButton Icon="@Icons.Material.Filled.Save"
+                           Size="Size.Small"
+                           Disabled="@(!_isDirty)"
+                           Title="Сохранить"
+                           OnClick="SaveCell" />
+            <MudIconButton Icon="@Icons.Material.Filled.UploadFile"
+                           Size="Size.Small"
+                           Title="Импортировать из файла"
+                           OnClick="ImportFromFile" />
+            @if (_isFullscreen)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.FullscreenExit"
+                               Size="Size.Small"
+                               Title="Закрыть полноэкранный режим (Esc)"
+                               OnClick="ToggleFullscreen" />
+            }
+            else
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Fullscreen"
+                               Size="Size.Small"
+                               Title="Развернуть во весь экран"
+                               OnClick="ToggleFullscreen" />
+            }
             <MudText Typo="Typo.caption" Color="Color.Secondary">Excalidraw — диаграмма</MudText>
         </div>
-        <div class="notebook-excalidraw-wrap" style="height: 400px; min-height: 300px;">
+        <div class="notebook-excalidraw-wrap"
+             style="@(_isFullscreen ? "flex:1 1 auto; height:calc(100vh - 96px); min-height:300px;" : "height: 400px; min-height: 300px;")">
             <iframe id="@_iframeId"
                     src="excalidraw/embed.html"
                     title="Excalidraw diagram"
@@ -21,40 +49,22 @@
                     @onload="HandleIframeLoad" />
         </div>
     </MudStack>
-    <MudDialog @bind-Visible="_fullscreenOpen" FullScreen="true" Options="new DialogOptions { CloseButton = true }">
-        <TitleContent>
-            <MudText Typo="Typo.h6">Excalidraw — на весь экран</MudText>
-        </TitleContent>
-        <DialogContent>
-            <div class="notebook-excalidraw-fullscreen" style="width: 100%; height: calc(100vh - 120px); min-height: 400px;">
-                <iframe id="@_fullscreenIframeId"
-                        src="excalidraw/embed.html"
-                        title="Excalidraw fullscreen"
-                        style="width: 100%; height: 100%; border: none; pointer-events: auto;"
-                        @onload="HandleFullscreenIframeLoad" />
-            </div>
-        </DialogContent>
-        <DialogActions>
-            <MudButton Variant="Variant.Filled" OnClick="CloseFullscreen">Закрыть и сохранить</MudButton>
-        </DialogActions>
-    </MudDialog>
 </MudPaper>
 
 @code {
     [Parameter, EditorRequired] public NotebookCellInfo Cell { get; set; } = null!;
     [Parameter] public EventCallback<NotebookCellInfo> OnDeleteCell { get; set; }
     [Parameter] public EventCallback<(int CellId, string Content)> OnExcalidrawContentChanged { get; set; }
-    [Parameter] public EventCallback OnCellUpdated { get; set; }
+    [Parameter] public EventCallback<int> OnSaveRequested { get; set; }
 
     [Inject] private IJSRuntime JS { get; set; } = null!;
 
     private string _iframeId = "excalidraw-" + Guid.NewGuid().ToString("N")[..8];
-    private string _fullscreenIframeId = "excalidraw-fs-" + Guid.NewGuid().ToString("N")[..8];
     private DotNetObjectReference<NotebookExcalidrawCell>? _dotNetRef;
     private bool _listenerRegistered;
     private string? _lastSentContent;
-    private bool _fullscreenOpen;
-    private bool _fullscreenListenerRegistered;
+    private bool _isFullscreen;
+    private bool _isDirty;
 
     protected override void OnInitialized()
     {
@@ -65,11 +75,31 @@
     {
         try
         {
-            if (!_listenerRegistered)
+            if (!_listenerRegistered && _dotNetRef != null)
             {
-                await JS.InvokeVoidAsync("sqlNotebookExcalidraw.listenForChanges", _iframeId, _dotNetRef);
+                await JS.InvokeVoidAsync("sqlNotebookExcalidraw.listenForChanges", _iframeId, _dotNetRef, "OnExcalidrawChange", "OnExcalidrawReady", "OnExcalidrawEscape");
                 _listenerRegistered = true;
             }
+            _ = SendContentWhenReadyAsync();
+            _ = InvokeAsync(async () =>
+            {
+                await Task.Delay(800);
+                await SendContentWhenReadyAsync();
+            });
+        }
+        catch (Exception) { /* iframe may not be ready */ }
+    }
+
+    [JSInvokable]
+    public async Task OnExcalidrawReady()
+    {
+        await SendContentWhenReadyAsync();
+    }
+
+    private async Task SendContentWhenReadyAsync()
+    {
+        try
+        {
             var content = Cell.Content ?? "";
             if (string.IsNullOrWhiteSpace(content))
                 content = "{}";
@@ -79,62 +109,19 @@
                 _lastSentContent = content;
             }
         }
-        catch (Exception) { /* iframe may not be ready */ }
+        catch (Exception) { /* ignore */ }
     }
 
-    private void OpenFullscreen()
+    private void ToggleFullscreen()
     {
-        _fullscreenOpen = true;
-    }
-
-    private async Task HandleFullscreenIframeLoad()
-    {
-        try
-        {
-            if (!_fullscreenListenerRegistered)
-            {
-                await JS.InvokeVoidAsync("sqlNotebookExcalidraw.listenForChanges", _fullscreenIframeId, _dotNetRef, "OnExcalidrawFullscreenChange");
-                _fullscreenListenerRegistered = true;
-            }
-            var content = Cell.Content ?? "";
-            if (string.IsNullOrWhiteSpace(content))
-                content = "{}";
-            await JS.InvokeVoidAsync("sqlNotebookExcalidraw.sendContent", _fullscreenIframeId, content);
-        }
-        catch (Exception) { }
-    }
-
-    private async Task CloseFullscreen()
-    {
-        try
-        {
-            await JS.InvokeVoidAsync("sqlNotebookExcalidraw.requestContent", _fullscreenIframeId);
-        }
-        catch { }
-        await InvokeAsync(StateHasChanged);
+        _isFullscreen = !_isFullscreen;
     }
 
     [JSInvokable]
-    public async Task OnExcalidrawFullscreenChange(string content)
+    public Task OnExcalidrawEscape()
     {
-        if (string.IsNullOrEmpty(content)) return;
-        _lastSentContent = content;
-        if (OnExcalidrawContentChanged.HasDelegate)
-            await OnExcalidrawContentChanged.InvokeAsync((Cell.Id, content));
-        if (OnCellUpdated.HasDelegate)
-            await OnCellUpdated.InvokeAsync();
-        try
-        {
-            await JS.InvokeVoidAsync("sqlNotebookExcalidraw.sendContent", _iframeId, content);
-        }
-        catch { }
-        _fullscreenOpen = false;
-        if (_fullscreenListenerRegistered)
-        {
-            try { await JS.InvokeVoidAsync("sqlNotebookExcalidraw.stopListen", _fullscreenIframeId); } catch { }
-            _fullscreenListenerRegistered = false;
-        }
-        await InvokeAsync(StateHasChanged);
+        _isFullscreen = false;
+        return InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]
@@ -142,11 +129,28 @@
     {
         if (string.IsNullOrEmpty(content)) return;
         _lastSentContent = content;
+        _isDirty = true;
+        Cell.Content = content;
         if (OnExcalidrawContentChanged.HasDelegate)
             await OnExcalidrawContentChanged.InvokeAsync((Cell.Id, content));
-        if (OnCellUpdated.HasDelegate)
-            await OnCellUpdated.InvokeAsync();
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SaveCell()
+    {
+        if (!OnSaveRequested.HasDelegate) return;
+        await OnSaveRequested.InvokeAsync(Cell.Id);
+        _isDirty = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ImportFromFile()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("sqlNotebookExcalidraw.importFromFile", _iframeId);
+        }
+        catch { }
     }
 
     private async Task DeleteCell()

@@ -38,8 +38,8 @@
         };
     </script>
 
-    <!-- Monaco Editor (VS Code engine) for SQL -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.53.0/min/vs/loader.min.js" crossorigin="anonymous"></script>
+    <!-- Monaco Editor (VS Code engine) for SQL - use 0.45.0 for working worker path on CDN -->
+    <script src="https://unpkg.com/monaco-editor@0.45.0/min/vs/loader.js" crossorigin="anonymous"></script>
     <script>
             (function () {
                 var editors = {};
@@ -53,10 +53,11 @@
                         for (var id in editors) { try { if (editors[id] && editors[id].layout) editors[id].layout(); } catch (e) {} }
                     });
                 }
-            require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.53.0/min/vs' } });
+            var monacoBase = 'https://unpkg.com/monaco-editor@0.45.0/min';
+            require.config({ paths: { 'vs': monacoBase + '/vs' } });
             window.MonacoEnvironment = {
                 getWorker: function (workerId, label) {
-                    var code = 'self.MonacoEnvironment={baseUrl:"https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.53.0/min"};importScripts("https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.53.0/min/vs/base/worker/workerMain.js");';
+                    var code = 'self.MonacoEnvironment={baseUrl:"' + monacoBase + '"};importScripts("' + monacoBase + '/vs/base/worker/workerMain.js");';
                     var blob = new Blob([code], { type: 'application/javascript' });
                     var url = URL.createObjectURL(blob);
                     return new Worker(url, { type: 'classic' });
@@ -371,13 +372,41 @@
                 if (frame && frame.contentWindow)
                     frame.contentWindow.postMessage({ type: "excalidraw-get" }, "*");
             },
-            listenForChanges: function(iframeId, dotNetRef, methodName) {
+            importFromFile: function(iframeId) {
+                var frame = document.getElementById(iframeId);
+                if (!frame || !frame.contentWindow) return;
+                var input = document.createElement("input");
+                input.type = "file";
+                input.accept = "application/json";
+                input.style.display = "none";
+                input.onchange = function () {
+                    if (!input.files || !input.files.length) return;
+                    var file = input.files[0];
+                    var reader = new FileReader();
+                    reader.onload = function (e) {
+                        try {
+                            var text = e.target && e.target.result ? String(e.target.result) : "";
+                            if (!text) return;
+                            frame.contentWindow.postMessage({ type: "excalidraw-set", content: text }, "*");
+                        } catch { }
+                    };
+                    try { reader.readAsText(file); } catch { }
+                };
+                document.body.appendChild(input);
+                input.click();
+                setTimeout(function () { if (input.parentNode) input.parentNode.removeChild(input); }, 0);
+            },
+            listenForChanges: function(iframeId, dotNetRef, methodName, onReadyMethodName, onEscMethodName) {
                 methodName = methodName || "OnExcalidrawChange";
                 var handler = function(event) {
                     var frame = document.getElementById(iframeId);
                     if (!frame || !frame.contentWindow || event.source !== frame.contentWindow) return;
                     if (event.data && event.data.type === "excalidraw-change" && event.data.content != null)
                         dotNetRef.invokeMethodAsync(methodName, event.data.content);
+                    if (event.data && event.data.type === "excalidraw-ready" && onReadyMethodName)
+                        dotNetRef.invokeMethodAsync(onReadyMethodName);
+                    if (event.data && event.data.type === "excalidraw-esc" && onEscMethodName)
+                        dotNetRef.invokeMethodAsync(onEscMethodName);
                 };
                 window.addEventListener("message", handler);
                 if (!window.__excalidrawListeners) window.__excalidrawListeners = {};

@@ -4,24 +4,137 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
     <title>Excalidraw — Diagram</title>
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@19.0.0",
+            "react/jsx-runtime": "https://esm.sh/react@19.0.0/jsx-runtime",
+            "react-dom": "https://esm.sh/react-dom@19.0.0",
+            "react-dom/client": "https://esm.sh/react-dom@19.0.0/client"
+        }
+    }
+    </script>
     <style>
         body { margin: 0; height: 100vh; }
         #root { height: 100%; }
     </style>
     <script>
-        window.EXCALIDRAW_ASSET_PATH = "https://esm.sh/@excalidraw/excalidraw@0.18.0/dist/prod/";
+        window.EXCALIDRAW_ASSET_PATH = "https://unpkg.com/@excalidraw/excalidraw@0.18.0/dist/prod/";
     </script>
+    <link rel="stylesheet" href="https://unpkg.com/@excalidraw/excalidraw@0.18.0/dist/prod/index.css" />
 </head>
 <body>
     <div id="root"></div>
     <script type="module">
-        import React from "https://esm.sh/react@18.2.0";
-        import { createRoot } from "https://esm.sh/react-dom@18.2.0/client";
-        import { Excalidraw } from "https://esm.sh/@excalidraw/excalidraw@0.18.0";
-        import "https://esm.sh/@excalidraw/excalidraw@0.18.0/dist/excalidraw.prod.min.css";
+        import React from "react";
+        import { createRoot } from "react-dom/client";
+        import { Excalidraw } from "https://esm.sh/@excalidraw/excalidraw@0.18.0?external=react,react-dom";
 
         let initialData = null;
         let pendingSet = null;
+        let root = null;
+        let hasRendered = false;
+        let pendingChangePayload = null;
+        let changeDebounceId = null;
+        const CHANGE_DEBOUNCE_MS = 400;
+
+        function ensureRoot() {
+            if (!root) {
+                const rootEl = document.getElementById("root");
+                root = createRoot(rootEl);
+            }
+        }
+
+        function renderExcalidraw(startData) {
+            ensureRoot();
+            if (hasRendered) {
+                const data = startData || initialData;
+                if (data && window.__excalidrawUpdateScene) {
+                    window.__excalidrawUpdateScene(data);
+                }
+                return;
+            }
+            hasRendered = true;
+            const data = startData || initialData;
+            root.render(React.createElement(Excalidraw, {
+                initialData: data,
+                viewModeEnabled: false,
+                UIOptions: {
+                    canvasActions: {
+                        changeViewBackgroundColor: false,
+                        clearCanvas: false,
+                        export: false,
+                        loadScene: false,
+                        saveToActiveFile: false,
+                        saveAsImage: false,
+                        toggleTheme: false
+                    }
+                },
+                excalidrawAPI: (api) => {
+                    window.__excalidrawAPI = api;
+                    window.__excalidrawUpdateScene = (updateData) => {
+                        if (api && updateData && (updateData.elements || updateData.appState))
+                            api.updateScene(normalizePayload(updateData));
+                    };
+                    if (pendingSet) {
+                        window.__excalidrawUpdateScene(pendingSet);
+                        pendingSet = null;
+                    }
+                    if (window.parent !== window) {
+                        window.parent.postMessage({ type: "excalidraw-ready" }, "*");
+                    }
+                },
+                onChange: (elements, appState, files) => {
+                    // При первой инициализации Excalidraw может послать пустую сцену.
+                    // Не затираем сохранённый контент пустым состоянием.
+                    if (!elements || elements.length === 0) {
+                        return;
+                    }
+                    // Копим изменения и отправляем их родителю с дебаунсом,
+                    // чтобы не спамить postMessage и не тормозить отрисовку.
+                    pendingChangePayload = { elements: elements || [], appState: appState || {}, files: files || {} };
+                    if (changeDebounceId != null) {
+                        clearTimeout(changeDebounceId);
+                    }
+                    changeDebounceId = setTimeout(() => {
+                        changeDebounceId = null;
+                        if (!pendingChangePayload) return;
+                        const normalized = normalizePayload(pendingChangePayload);
+                        pendingChangePayload = null;
+                        sendToParent(JSON.stringify(normalized));
+                    }, CHANGE_DEBOUNCE_MS);
+                }
+            }));
+        }
+
+        function normalizeAppState(appState) {
+            if (!appState) return appState;
+            const next = { ...appState };
+            if (next.collaborators != null && !Array.isArray(next.collaborators)) {
+                next.collaborators = Object.keys(next.collaborators).length ? Object.values(next.collaborators) : [];
+            }
+            if (next.collaborators == null) next.collaborators = [];
+            // Никогда не показываем welcome screen при восстановлении сохранённой сцены
+            next.showWelcomeScreen = false;
+            return next;
+        }
+
+        function normalizePayload(payload) {
+            if (!payload) return payload;
+            const result = { files: {}, ...payload };
+            if (result.appState) result.appState = normalizeAppState(result.appState);
+            if (result.elements && !Array.isArray(result.elements)) result.elements = [];
+            if (!result.files || typeof result.files !== "object") result.files = {};
+            return result;
+        }
+
+        window.addEventListener("keydown", function (event) {
+            if (event.key === "Escape" || event.key === "Esc") {
+                if (window.parent !== window) {
+                    window.parent.postMessage({ type: "excalidraw-esc" }, "*");
+                }
+            }
+        });
 
         window.addEventListener("message", function (event) {
             if (event.data?.type === "excalidraw-get") {
@@ -29,20 +142,32 @@
                     if (window.__excalidrawAPI) {
                         var elements = window.__excalidrawAPI.getSceneElements ? window.__excalidrawAPI.getSceneElements() : [];
                         var appState = window.__excalidrawAPI.getAppState ? window.__excalidrawAPI.getAppState() : {};
-                        sendToParent(JSON.stringify({ elements: elements || [], appState: appState || {} }));
+                        var files = window.__excalidrawAPI.getFiles ? window.__excalidrawAPI.getFiles() : {};
+                        var payload = normalizePayload({ elements: elements || [], appState: appState || {}, files: files || {} });
+                        sendToParent(JSON.stringify(payload));
                     }
                 } catch (e) { console.warn("excalidraw-get error", e); }
                 return;
             }
             if (event.data?.type === "excalidraw-set") {
                 try {
-                    const payload = typeof event.data.content === "string" ? JSON.parse(event.data.content) : event.data.content;
-                    if (payload && (payload.elements || payload.appState)) {
-                        initialData = payload;
-                        if (window.__excalidrawUpdateScene) {
-                            window.__excalidrawUpdateScene(payload);
-                        } else {
-                            pendingSet = payload;
+                    const raw = typeof event.data.content === "string" ? JSON.parse(event.data.content) : event.data.content;
+                    // Пустой объект ({} или без elements/appState) означает новую сцену
+                    if (!raw || (!raw.elements && !raw.appState)) {
+                        initialData = null;
+                        if (!hasRendered) {
+                            renderExcalidraw(null);
+                        }
+                        return;
+                    }
+                    const payload = normalizePayload(raw);
+                    initialData = payload;
+                    if (window.__excalidrawAPI && window.__excalidrawUpdateScene) {
+                        window.__excalidrawUpdateScene(payload);
+                    } else {
+                        pendingSet = payload;
+                        if (!hasRendered) {
+                            renderExcalidraw(payload);
                         }
                     }
                 } catch (e) { console.warn("excalidraw-set parse error", e); }
@@ -55,26 +180,13 @@
             }
         }
 
-        const rootEl = document.getElementById("root");
-        const root = createRoot(rootEl);
-        root.render(React.createElement(Excalidraw, {
-            initialData: initialData,
-            viewModeEnabled: false,
-            excalidrawAPI: (api) => {
-                window.__excalidrawAPI = api;
-                window.__excalidrawUpdateScene = (data) => {
-                    if (api && data && (data.elements || data.appState)) api.updateScene(data);
-                };
-                if (pendingSet) {
-                    window.__excalidrawUpdateScene(pendingSet);
-                    pendingSet = null;
-                }
-            },
-            onChange: (elements, appState, files) => {
-                const payload = { elements, appState };
-                sendToParent(JSON.stringify(payload));
+        // Если родитель не прислал данных (новая ячейка), монтируем пустую сцену чуть позже,
+        // чтобы дать шанс получить сохранённое содержимое до первой отрисовки.
+        setTimeout(() => {
+            if (!hasRendered) {
+                renderExcalidraw(null);
             }
-        }));
+        }, 200);
     </script>
 </body>
 </html>
