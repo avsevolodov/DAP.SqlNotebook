@@ -210,6 +210,10 @@
                     var ed = editors[elementId];
                     if (ed && window.monaco) monaco.editor.setTheme(theme || 'vs-dark');
                 },
+                ensureEditorEditable: function (elementId) {
+                    var ed = editors[elementId];
+                    if (ed) try { ed.updateOptions({ readOnly: false }); } catch (e) {}
+                },
                 registerRunCommand: function (elementId, dotNetRef) {
                     var ed = editors[elementId];
                     if (!ed || !dotNetRef) return;
@@ -351,6 +355,37 @@
                 document.body.style.userSelect = 'none';
                 document.addEventListener('mousemove', move);
                 document.addEventListener('mouseup', up);
+            }
+        };
+    </script>
+
+    <script>
+        window.sqlNotebookExcalidraw = window.sqlNotebookExcalidraw || {
+            sendContent: function(iframeId, content) {
+                var frame = document.getElementById(iframeId);
+                if (frame && frame.contentWindow && content != null)
+                    frame.contentWindow.postMessage({ type: "excalidraw-set", content: content }, "*");
+            },
+            requestContent: function(iframeId) {
+                var frame = document.getElementById(iframeId);
+                if (frame && frame.contentWindow)
+                    frame.contentWindow.postMessage({ type: "excalidraw-get" }, "*");
+            },
+            listenForChanges: function(iframeId, dotNetRef, methodName) {
+                methodName = methodName || "OnExcalidrawChange";
+                var handler = function(event) {
+                    var frame = document.getElementById(iframeId);
+                    if (!frame || !frame.contentWindow || event.source !== frame.contentWindow) return;
+                    if (event.data && event.data.type === "excalidraw-change" && event.data.content != null)
+                        dotNetRef.invokeMethodAsync(methodName, event.data.content);
+                };
+                window.addEventListener("message", handler);
+                if (!window.__excalidrawListeners) window.__excalidrawListeners = {};
+                window.__excalidrawListeners[iframeId] = handler;
+            },
+            stopListen: function(iframeId) {
+                var h = window.__excalidrawListeners && window.__excalidrawListeners[iframeId];
+                if (h) { window.removeEventListener("message", h); delete window.__excalidrawListeners[iframeId]; }
             }
         };
     </script>

@@ -184,6 +184,7 @@
                     _lastCellCount = Notebook?.Cells?.Count ?? 0;
                     if (_dotNetRef != null)
                         await JS.InvokeVoidAsync("sqlNotebookMonaco.registerRunCommand", _editorElementId, _dotNetRef);
+                    try { await JS.InvokeVoidAsync("sqlNotebookMonaco.ensureEditorEditable", _editorElementId); } catch { }
                     CatalogInsertService.SetInsertAtCursorCallback(InsertColumnNameAtCursorAsync);
                     CatalogInsertService.SetPasteToEditorCallback(PasteToEditorToMonacoAsync);
                     try
@@ -231,7 +232,12 @@
             if (cellCount != _lastCellCount)
             {
                 _lastCellCount = cellCount;
-                try { await JS.InvokeVoidAsync("sqlNotebookHighlightCode"); } catch { }
+                try
+                {
+                    await JS.InvokeVoidAsync("sqlNotebookHighlightCode");
+                    await JS.InvokeVoidAsync("sqlNotebookMonaco.ensureEditorEditable", _editorElementId);
+                }
+                catch { }
             }
         }
     }

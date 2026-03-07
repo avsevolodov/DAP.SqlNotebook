@@ -24,6 +24,16 @@
         let pendingSet = null;
 
         window.addEventListener("message", function (event) {
+            if (event.data?.type === "excalidraw-get") {
+                try {
+                    if (window.__excalidrawAPI) {
+                        var elements = window.__excalidrawAPI.getSceneElements ? window.__excalidrawAPI.getSceneElements() : [];
+                        var appState = window.__excalidrawAPI.getAppState ? window.__excalidrawAPI.getAppState() : {};
+                        sendToParent(JSON.stringify({ elements: elements || [], appState: appState || {} }));
+                    }
+                } catch (e) { console.warn("excalidraw-get error", e); }
+                return;
+            }
             if (event.data?.type === "excalidraw-set") {
                 try {
                     const payload = typeof event.data.content === "string" ? JSON.parse(event.data.content) : event.data.content;
@@ -49,6 +59,7 @@
         const root = createRoot(rootEl);
         root.render(React.createElement(Excalidraw, {
             initialData: initialData,
+            viewModeEnabled: false,
             excalidrawAPI: (api) => {
                 window.__excalidrawAPI = api;
                 window.__excalidrawUpdateScene = (data) => {
