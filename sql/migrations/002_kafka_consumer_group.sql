@@ -20,4 +20,3 @@ BEGIN
             CONSTRAINT DF_DataMartNodes_ConsumerGroupAutoGenerate DEFAULT 0;
 END
 GO
-
