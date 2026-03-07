@@ -390,7 +390,7 @@
     private async Task FormatCellContent(NotebookCellInfo cell)
     {
         if (cell.Type != NotebookCellTypeInfo.Sql && cell.Type != NotebookCellTypeInfo.Chart) return;
-        var formatted = SqlFormatter.Format(cell.Content);
+        var formatted = SqlFormatterHelper.Format(cell.Content);
         if (formatted == cell.Content) return;
         if (OnFormatCell.HasDelegate)
             await OnFormatCell.InvokeAsync((cell.Id, formatted));

@@ -215,7 +215,7 @@ namespace DAP.SqlNotebook.Service.Controllers
         public async Task<ActionResult<DbEntityInfo>> CreateEntity([FromBody] CreateDbEntityInfo model, CancellationToken ct)
         {
             if (model == null || string.IsNullOrWhiteSpace(model.Name)) return BadRequest("Name is required.");
-            var create = new CreateDbEntityParams { Name = model.Name, DisplayName = model.DisplayName, Description = model.Description };
+            var create = new CreateDbEntityParams { Name = model.Name, DisplayName = model.DisplayName, SchemaName = model.SchemaName, Description = model.Description };
             var entity = await _repository.CreateEntityAsync(create, ct).ConfigureAwait(false);
             return Ok(_mapper.Map<DbEntityInfo>(entity));
         }
@@ -224,7 +224,7 @@ namespace DAP.SqlNotebook.Service.Controllers
         public async Task<ActionResult<DbEntityInfo>> UpdateEntity(Guid entityId, [FromBody] UpdateDbEntityInfo model, CancellationToken ct)
         {
             if (model == null) return BadRequest();
-            var update = new UpdateDbEntityParams { Name = model.Name, DisplayName = model.DisplayName, Description = model.Description };
+            var update = new UpdateDbEntityParams { Name = model.Name, DisplayName = model.DisplayName, SchemaName = model.SchemaName, Description = model.Description };
             var entity = await _repository.UpdateEntityAsync(entityId, update, ct).ConfigureAwait(false);
             if (entity == null) return NotFound();
             return Ok(_mapper.Map<DbEntityInfo>(entity));

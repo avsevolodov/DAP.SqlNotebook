@@ -35,6 +35,16 @@ public sealed class WorkspaceRepository : IWorkspaceRepository
         return await query.OrderBy(x => x.Name).ToListAsync(ct).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<WorkspaceEntity>> GetTreeAsync(CancellationToken ct = default)
+    {
+        return await _db.Workspaces
+            .AsNoTracking()
+            .OrderBy(x => x.ParentId == null ? 0 : 1)
+            .ThenBy(x => x.Name)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+    }
+
     public async Task<WorkspaceEntity> CreateAsync(WorkspaceEntity entity, CancellationToken ct = default)
     {
         if (entity.Id == default)
@@ -52,6 +62,8 @@ public sealed class WorkspaceRepository : IWorkspaceRepository
             throw new InvalidOperationException($"Workspace {entity.Id} not found.");
         existing.Name = entity.Name;
         existing.Description = entity.Description;
+        existing.ParentId = entity.ParentId;
+        existing.IsFolder = entity.IsFolder;
         if (entity.OwnerLogin != null)
             existing.OwnerLogin = entity.OwnerLogin;
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);

@@ -18,10 +18,12 @@ else if (Result.Columns != null && Result.Columns.Length > 0)
     if (showChart && chartData != null)
     {
         var chartHeight = MaxHeight > 0 ? MaxHeight + "px" : "300px";
-        <MudPaper Class="mt-2" Style="@(MaxHeight > 0 ? $"max-height:{MaxHeight}px;overflow:auto;" : "")">
+        <MudPaper Class="mt-2" Style="@(MaxHeight > 0 ? $"max-height:{MaxHeight}px;overflow:hidden;" : "overflow:hidden;")">
             <MudChart ChartType="@chartData.ChartType"
                       ChartSeries="@chartData.Series"
                       XAxisLabels="@chartData.XAxisLabels"
+                      InputLabels="@chartData.XAxisLabels"
+                      InputData="@chartData.InputData"
                       Width="100%"
                       Height="@chartHeight" />
         </MudPaper>
@@ -64,6 +66,8 @@ else
         public ChartType ChartType { get; set; }
         public List<ChartSeries> Series { get; set; } = new();
         public string[] XAxisLabels { get; set; } = Array.Empty<string>();
+        /// <summary>For Pie/Donut: raw values; required for Pie to render.</summary>
+        public double[]? InputData { get; set; }
     }
 
     private static ChartData? GetChartData(NotebookCellExecutionResultInfo result)
@@ -152,7 +156,8 @@ else
             {
                 ChartType = ChartType.Pie,
                 Series = new List<ChartSeries> { new ChartSeries { Name = columns[valueCol].Name, Data = values.ToArray() } },
-                XAxisLabels = labels.ToArray()
+                XAxisLabels = labels.ToArray(),
+                InputData = values.ToArray()
             };
         }
 

@@ -1,6 +1,7 @@
-@using System.Net.Http.Json
-@using System.Text.Json
+@using System.Threading
 @using DAP.SqlNotebook.Contract.Entities
+@using DAP.SqlNotebook.Service.Client.V1
+@using DAP.SqlNotebook.UI.Helpers
 @using global::MudBlazor
 @using Microsoft.AspNetCore.Components.Web
 @using MudBlazor
@@ -12,7 +13,7 @@
 <MudPaper Class="pa-4" Elevation="0">
     <MudStack Spacing="3">
         <MudText Typo="Typo.h6">Catalog entities and fields</MudText>
-        <MudLink Href="/schema-catalog" Typo="Typo.body2">← Back to Schema catalog</MudLink>
+        <MudLink Href="@MainRoutes.SchemaCatalog" Typo="Typo.body2">← Back to Schema catalog</MudLink>
 
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
             <MudText Typo="Typo.subtitle2">Database (source):</MudText>
@@ -59,6 +60,9 @@
                                            OnClick="@(() => ToggleExpand(ctx.Item))"
                                            Title="@(ctx.Item.Id == _expandedEntityId ? "Collapse" : "Expand to load fields")" />
                         </CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn T="DbEntityInfo" Title="Schema" Sortable="false" Width="100px">
+                        <CellTemplate Context="ctx">@(ctx.Item.SchemaName ?? "—")</CellTemplate>
                     </TemplateColumn>
                     <PropertyColumn T="DbEntityInfo" TProperty="string" Property="x => x.Name" Title="Name" />
                     <TemplateColumn T="DbEntityInfo" Title="Display name">
@@ -165,7 +169,7 @@
 </MudDialog>
 
 @code {
-    [Inject] private HttpClient Http { get; set; } = null!;
+    [Inject] private ICatalogManager Catalog { get; set; } = null!;
 
     private MudDataGrid<DbEntityInfo>? _grid;
     private List<CatalogNodeInfo> _sourceNodes = new();
@@ -197,8 +201,8 @@
     {
         try
         {
-            var list = await Http.GetFromJsonAsync<List<CatalogNodeInfo>>("api/v1/catalog/databases");
-            _sourceNodes = list ?? new();
+            var list = await Catalog.GetDatabasesAsync(CancellationToken.None);
+            _sourceNodes = list?.ToList() ?? new();
         }
         catch
         {
@@ -223,21 +227,8 @@
         try
         {
             var offset = state.Page * state.PageSize;
-            var url = $"api/v1/catalog/entities?nodeId={_selectedSourceId.Value:N}&offset={offset}&count={state.PageSize}";
-            var res = await Http.GetAsync(url);
-            if (!res.IsSuccessStatusCode)
-                return new GridData<DbEntityInfo> { Items = new List<DbEntityInfo>(), TotalItems = 0 };
-            var json = await res.Content.ReadAsStringAsync();
-            var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            var items = new List<DbEntityInfo>();
-            if (root.TryGetProperty("Items", out var itemsEl) && itemsEl.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var el in itemsEl.EnumerateArray())
-                    items.Add(JsonSerializer.Deserialize<DbEntityInfo>(el.GetRawText()) ?? new DbEntityInfo());
-            }
-            var total = root.TryGetProperty("TotalCount", out var tc) ? tc.GetInt32() : items.Count;
-            return new GridData<DbEntityInfo> { Items = items, TotalItems = total };
+            var result = await Catalog.GetEntitiesPagedAsync(_selectedSourceId.Value, offset, state.PageSize, CancellationToken.None);
+            return new GridData<DbEntityInfo> { Items = result.Items ?? new List<DbEntityInfo>(), TotalItems = result.TotalCount };
         }
         catch
         {
@@ -269,8 +260,8 @@
         _loadingFields = true;
         try
         {
-            var list = await Http.GetFromJsonAsync<List<DbFieldInfo>>($"api/v1/catalog/entities/{_selectedEntity.Id:N}/fields");
-            _fields = list ?? new();
+            var list = await Catalog.GetFieldsAsync(_selectedEntity.Id, CancellationToken.None);
+            _fields = list?.ToList() ?? new();
         }
         finally
         {
@@ -317,24 +308,20 @@
         {
             if (_editingEntityId.HasValue)
             {
-                await Http.PutAsJsonAsync($"api/v1/catalog/entities/{_editingEntityId.Value:N}", new UpdateDbEntityInfo { Name = _entityName, DisplayName = _entityDisplayName, Description = _entityDescription });
+                await Catalog.UpdateEntityAsync(_editingEntityId.Value, new UpdateDbEntityInfo { Name = _entityName, DisplayName = _entityDisplayName, Description = _entityDescription }, CancellationToken.None);
             }
             else
             {
-                var createRes = await Http.PostAsJsonAsync("api/v1/catalog/entities", new CreateDbEntityInfo { Name = _entityName, DisplayName = _entityDisplayName, Description = _entityDescription });
-                if (createRes.IsSuccessStatusCode && _selectedSourceId.HasValue)
+                var created = await Catalog.CreateEntityAsync(new CreateDbEntityInfo { Name = _entityName, DisplayName = _entityDisplayName, Description = _entityDescription }, CancellationToken.None);
+                if (_selectedSourceId.HasValue)
                 {
-                    var created = await createRes.Content.ReadFromJsonAsync<DbEntityInfo>();
-                    if (created != null)
+                    await Catalog.CreateNodeAsync(new CatalogNodeCreateInfo
                     {
-                        await Http.PostAsJsonAsync("api/v1/catalog/nodes", new CatalogNodeCreateInfo
-                        {
-                            ParentId = _selectedSourceId,
-                            Type = 2,
-                            Name = _entityName,
-                            EntityId = created.Id,
-                        });
-                    }
+                        ParentId = _selectedSourceId,
+                        Type = 2,
+                        Name = _entityName,
+                        EntityId = created.Id,
+                    }, CancellationToken.None);
                 }
             }
             CloseEntityDialog();
@@ -376,11 +363,11 @@
         {
             if (_editingFieldId.HasValue)
             {
-                await Http.PutAsJsonAsync($"api/v1/catalog/fields/{_editingFieldId.Value:N}", new UpdateDbFieldInfo { Name = _fieldName, DataType = _fieldDataType, IsNullable = _fieldIsNullable, IsPrimaryKey = _fieldIsPrimaryKey, Description = _fieldDescription });
+                await Catalog.UpdateFieldAsync(_editingFieldId.Value, new UpdateDbFieldInfo { Name = _fieldName, DataType = _fieldDataType, IsNullable = _fieldIsNullable, IsPrimaryKey = _fieldIsPrimaryKey, Description = _fieldDescription }, CancellationToken.None);
             }
             else
             {
-                await Http.PostAsJsonAsync("api/v1/catalog/fields", new CreateDbFieldInfo { EntityId = _selectedEntity.Id, Name = _fieldName, DataType = _fieldDataType, IsNullable = _fieldIsNullable, IsPrimaryKey = _fieldIsPrimaryKey, Description = _fieldDescription });
+                await Catalog.CreateFieldAsync(new CreateDbFieldInfo { EntityId = _selectedEntity.Id, Name = _fieldName, DataType = _fieldDataType, IsNullable = _fieldIsNullable, IsPrimaryKey = _fieldIsPrimaryKey, Description = _fieldDescription }, CancellationToken.None);
             }
             CloseFieldDialog();
             await LoadFields();
@@ -392,7 +379,7 @@
     {
         try
         {
-            await Http.DeleteAsync($"api/v1/catalog/fields/{f.Id:N}");
+            await Catalog.DeleteFieldAsync(f.Id, CancellationToken.None);
             await LoadFields();
         }
         catch { }

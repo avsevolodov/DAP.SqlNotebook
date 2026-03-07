@@ -87,7 +87,7 @@
                 if (workspaceId.HasValue)
                 {
                     var ws = await WorkspaceManager.GetWorkspace(workspaceId.Value, CancellationToken.None);
-                    _items.Add(new BreadcrumbItem(ws?.Name ?? "Workspace", $"/notebooks?workspaceId={workspaceId.Value:N}", false));
+                    _items.Add(new BreadcrumbItem(ws?.Name ?? "Workspace", MainRoutes.GetNotebooksRoute(workspaceId), false));
                 }
                 else
                 {
@@ -116,7 +116,7 @@
                         var ws = await WorkspaceManager.GetWorkspace(notebook.WorkspaceId.Value, CancellationToken.None);
                         _items.Add(new BreadcrumbItem(
                             ws?.Name ?? "Workspace",
-                            $"/notebooks?workspaceId={notebook.WorkspaceId.Value:N}",
+                            MainRoutes.GetNotebooksRoute(notebook.WorkspaceId.Value),
                             false));
                     }
                     else

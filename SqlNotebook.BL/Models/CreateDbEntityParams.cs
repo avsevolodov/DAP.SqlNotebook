@@ -4,5 +4,6 @@ public sealed class CreateDbEntityParams
 {
     public string Name { get; set; } = string.Empty;
     public string? DisplayName { get; set; }
+    public string? SchemaName { get; set; }
     public string? Description { get; set; }
 }

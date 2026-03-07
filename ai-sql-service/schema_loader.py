@@ -1,25 +1,26 @@
 """Schema fetch from C# backend and markdown building."""
 import logging
 import time
-from typing import Optional
+from typing import Optional, Union
 
 import requests
 
 from config import schema_api_url, schema_cache_ttl_seconds
+from rag_models import RagSchema
 from schema_client import get_entity, search_entities
 from schema_models import SchemaEntity
 
 logger = logging.getLogger(__name__)
 
-# Cache key: catalog_node_id or "all" for full schema. Value: {"expires_at", "value"}
+# Cache key: catalog_node_id or "all" for full schema. Value: {"expires_at", "value" (RagSchema)}
 _schema_cache: dict[str, dict] = {}
 
 REQUEST_TIMEOUT_SEC = 5
 
 
-def get_schema_object(force_refresh: bool = False, catalog_node_id: Optional[str] = None) -> dict:
+def get_schema_object(force_refresh: bool = False, catalog_node_id: Optional[str] = None) -> RagSchema:
     """
-    Fetch schema JSON from C# service (DbSchemaDto).
+    Fetch schema JSON from C# service (DbSchemaDto) and return as RagSchema.
     When catalog_node_id is set, requests only entities for that source (GET .../schema?catalogNodeId=xxx).
     Cached per catalog_node_id (or full schema when None) for SCHEMA_CACHE_TTL_SECONDS.
     """
@@ -31,7 +32,7 @@ def get_schema_object(force_refresh: bool = False, catalog_node_id: Optional[str
         url = base_url
     ttl_sec = schema_cache_ttl_seconds()
     entry = _schema_cache.get(cache_key)
-    if not force_refresh and entry and entry.get("value") and time.time() < entry.get("expires_at", 0):
+    if not force_refresh and entry and entry.get("value") is not None and time.time() < entry.get("expires_at", 0):
         logger.debug("Schema from cache: %s", cache_key)
         return entry["value"]
 
@@ -39,13 +40,13 @@ def get_schema_object(force_refresh: bool = False, catalog_node_id: Optional[str
         resp = requests.get(url, timeout=REQUEST_TIMEOUT_SEC)
         resp.raise_for_status()
         schema = resp.json()
+        parsed = RagSchema.model_validate(schema)
         _schema_cache[cache_key] = {
-            "value": schema,
+            "value": parsed,
             "expires_at": time.time() + ttl_sec,
         }
-        keys_preview = list(schema.keys()) if isinstance(schema, dict) else "n/a"
-        logger.debug("Schema fetched: %s keys=%s", url[:80], keys_preview)
-        return schema
+        logger.debug("Schema fetched: %s entities=%d", url[:80], len(parsed.entities))
+        return parsed
     except Exception as exc:
         logger.exception("Failed to fetch schema from %s: %s", url, exc)
         if "Connection refused" in str(exc) or "111" in str(exc):
@@ -53,7 +54,7 @@ def get_schema_object(force_refresh: bool = False, catalog_node_id: Optional[str
                 "Hint: When ai-sql-service runs in Docker, start C# backend with: "
                 "dotnet run --urls http://0.0.0.0:5175 (or ASPNETCORE_URLS=http://0.0.0.0:5175)."
             )
-        return {}
+        return RagSchema()
 
 
 def load_schema_on_demand(
@@ -116,32 +117,30 @@ def load_schema_on_demand(
     return "\n\n".join(parts) if parts else "No schema loaded. Use search_schema to find tables."
 
 
-def build_schema_markdown(schema: dict) -> str:
+def build_schema_markdown(schema: Union[RagSchema, dict]) -> str:
     """
-    Build markdown description from DbSchemaDto shape (camelCase or PascalCase from API).
+    Build markdown description from DbSchemaDto shape (RagSchema or dict from API).
     Uses full real structure: all entities, fields, relations.
     """
-    entities = schema.get("entities") or schema.get("Entities") or []
-    relations = schema.get("relations") or schema.get("Relations") or []
+    parsed = RagSchema.model_validate(schema) if isinstance(schema, dict) else schema
+    entities = parsed.entities
+    relations = parsed.relations
 
-    rel_by_from: dict[str, list[dict]] = {}
+    rel_by_from: dict[str, list] = {}
     for r in relations:
-        from_id = str(r.get("fromEntityId") or r.get("FromEntityId") or "")
-        rel_by_from.setdefault(from_id, []).append(r)
+        rel_by_from.setdefault(r.from_entity_id, []).append(r)
 
     parts: list[str] = []
 
     for ent in entities:
-        md = ent.get("markdownDescription") or ent.get("description") or ent.get("MarkdownDescription") or ent.get("Description")
-        if md:
-            # parts.append(str(md))
+        if ent.description:
             parts.append("")
             continue
 
-        ent_id = str(ent.get("id") or ent.get("Id") or "")
-        name = ent.get("displayName") or ent.get("Name") or "Entity"
-        full_name = ent.get("name") or ent.get("Name") or name
-        fields = ent.get("fields") or ent.get("Fields") or []
+        ent_id = ent.id
+        name = ent.display_name or ent.name or "Entity"
+        full_name = ent.name or name
+        fields = ent.fields
         ent_rels = rel_by_from.get(ent_id, [])
 
         lines: list[str] = []
@@ -153,13 +152,9 @@ def build_schema_markdown(schema: dict) -> str:
         if fields:
             lines.append("## Fields")
             for f in fields:
-                fname = f.get("name") or f.get("Name") or ""
-                ftype = f.get("dataType") or f.get("DataType") or ""
-                flags = []
-                if f.get("isPrimaryKey") or f.get("IsPrimaryKey"):
-                    flags.append("PK")
-                if not f.get("isNullable", f.get("IsNullable", True)):
-                    flags.append("Required")
+                fname = f.name
+                ftype = f.data_type or ""
+                flags = ["PK"] if f.is_primary_key else []
                 flags_text = f" ({', '.join(flags)})" if flags else ""
                 lines.append(f"- **{fname}** : `{ftype}`{flags_text}")
             lines.append("")
@@ -167,19 +162,12 @@ def build_schema_markdown(schema: dict) -> str:
         if ent_rels:
             lines.append("## Relationships")
             for r in ent_rels:
-                rname = r.get("name") or r.get("Name") or ""
-                from_field = r.get("fromFieldName") or r.get("FromFieldName") or ""
-                to_field = r.get("toFieldName") or r.get("ToFieldName") or ""
-                to_entity_id = str(r.get("toEntityId") or r.get("ToEntityId") or "")
-                target = next(
-                    (e for e in entities if str(e.get("id") or e.get("Id") or "") == to_entity_id),
-                    None,
+                to_name = next(
+                    (e.display_name or e.name for e in entities if e.id == r.to_entity_id),
+                    r.to_entity_id,
                 )
-                target_name = (target or {}).get("displayName") or (target or {}).get("Name") or ""
-                if not target_name:
-                    target_name = (target or {}).get("name") or (target or {}).get("DisplayName") or ""
                 lines.append(
-                    f"- **{rname}**: `{from_field}` → `{target_name}.{to_field}`"
+                    f"- **{r.name}**: `{r.from_field_name}` → `{to_name}.{r.to_field_name}`"
                 )
             lines.append("")
 
@@ -189,38 +177,30 @@ def build_schema_markdown(schema: dict) -> str:
     return "\n".join(parts)
 
 
-def _entity_key(e: dict, key: str) -> str:
-    v = e.get(key) or e.get(key[0].upper() + key[1:] if key else key)
-    return (v or "").strip()
-
-
-def build_schema_markdown_focused(schema: dict, entity_names_set: set) -> str:
+def build_schema_markdown_focused(schema: Union[RagSchema, dict], entity_names_set: set) -> str:
     """Build markdown for entities whose name/displayName is in entity_names_set; include their relations."""
-    all_entities = schema.get("entities") or schema.get("Entities") or []
-    all_relations = schema.get("relations") or schema.get("Relations") or []
+    parsed = RagSchema.model_validate(schema) if isinstance(schema, dict) else schema
+    all_entities = parsed.entities
+    all_relations = parsed.relations
     names_lower = {n.strip().lower() for n in entity_names_set if n.strip()}
     if not names_lower:
-        return build_schema_markdown(schema)
+        return build_schema_markdown(parsed)
     selected_ids = set()
     for e in all_entities:
-        name = _entity_key(e, "name")
-        display = _entity_key(e, "displayName") or name
+        name = (e.name or "").strip()
+        display = (e.display_name or name).strip()
         if name.lower() in names_lower or display.lower() in names_lower:
-            eid = str(e.get("id") or e.get("Id") or "")
-            if eid:
-                selected_ids.add(eid)
+            if e.id:
+                selected_ids.add(e.id)
     for r in all_relations:
-        from_id = str(r.get("fromEntityId") or r.get("FromEntityId") or "")
-        to_id = str(r.get("toEntityId") or r.get("ToEntityId") or "")
-        if from_id in selected_ids or to_id in selected_ids:
-            if from_id:
-                selected_ids.add(from_id)
-            if to_id:
-                selected_ids.add(to_id)
-    entities = [e for e in all_entities if str(e.get("id") or e.get("Id") or "") in selected_ids]
+        if r.from_entity_id in selected_ids or r.to_entity_id in selected_ids:
+            if r.from_entity_id:
+                selected_ids.add(r.from_entity_id)
+            if r.to_entity_id:
+                selected_ids.add(r.to_entity_id)
+    entities = [e for e in all_entities if e.id in selected_ids]
     relations = [
         r for r in all_relations
-        if str(r.get("fromEntityId") or r.get("FromEntityId") or "") in selected_ids
-        and str(r.get("toEntityId") or r.get("ToEntityId") or "") in selected_ids
+        if r.from_entity_id in selected_ids and r.to_entity_id in selected_ids
     ]
-    return build_schema_markdown({"entities": entities, "relations": relations})
+    return build_schema_markdown(RagSchema(entities=entities, relations=relations))

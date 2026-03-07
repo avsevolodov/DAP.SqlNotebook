@@ -1,0 +1,180 @@
+@page "/schema-catalog/sources/{SourceId:guid}"
+@using System.Threading
+@using DAP.SqlNotebook.Contract.Entities
+@using DAP.SqlNotebook.Service.Client.V1
+@using DAP.SqlNotebook.UI.Helpers
+@using DAP.Markdown
+@using global::MudBlazor
+@using Microsoft.AspNetCore.Components.Web
+
+<PageTitle>@(_source?.Name ?? "Source")</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="0">
+    <MudStack Spacing="3">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudLink Href="@MainRoutes.SchemaCatalog" Typo="Typo.body2">← Catalog</MudLink>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.Edit" Href="@MainRoutes.GetSourceEditRoute(SourceId)">Edit</MudButton>
+        </MudStack>
+
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else if (_source == null)
+        {
+            <MudAlert Severity="Severity.Warning">Source not found.</MudAlert>
+        }
+        else
+        {
+            <MudStack Spacing="3">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <span class="material-icons" style="color: var(--mud-palette-primary); font-size: 32px;">storage</span>
+                    <MudText Typo="Typo.h4">@_source.Name</MudText>
+                    @if (_status != null)
+                    {
+                        @if (_status.Status == ConnectionStatusInfo.Ok)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">Available</MudChip>
+                        }
+                        else if (_status.Status == ConnectionStatusInfo.Failed)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error" Icon="@Icons.Material.Filled.Error">@(_status.Message ?? "Unavailable")</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Default" Icon="@Icons.Material.Filled.HelpOutline">@(_status.Message ?? "Unknown")</MudChip>
+                        }
+                    }
+                </MudStack>
+
+                @if (!string.IsNullOrWhiteSpace(_source.Description))
+                {
+                    <MudText Typo="Typo.subtitle2">Description</MudText>
+                    <MudPaper Class="pa-3" Outlined="true">
+                        <MudMarkdown Value="@(_source.Description ?? "")" Props="@_markdownProps" />
+                    </MudPaper>
+                }
+
+                <MudText Typo="Typo.subtitle2" Class="mt-4">Parameters</MudText>
+                <MudPaper Class="pa-3" Outlined="true">
+                    <MudSimpleTable Dense="true" Hover="false" Striped="false" Breakpoint="Breakpoint.Sm" Class="mt-0" Style="max-width: 640px;">
+                        <tbody>
+                            <tr><td style="width:140px; color: var(--mud-palette-text-secondary);">Provider</td><td>@(_source.Provider ?? "—")</td></tr>
+                            <tr><td style="color: var(--mud-palette-text-secondary);">Connection</td><td>@(string.IsNullOrEmpty(_source.ConnectionInfo) ? "—" : _source.ConnectionInfo)</td></tr>
+                            <tr><td style="color: var(--mud-palette-text-secondary);">Database</td><td>@(_source.DatabaseName ?? "—")</td></tr>
+                            <tr><td style="color: var(--mud-palette-text-secondary);">Authentication</td><td>@(_source.AuthType ?? "—")</td></tr>
+                            @if (string.Equals(_source.AuthType, "Basic", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <tr><td style="color: var(--mud-palette-text-secondary);">Login</td><td>@(_source.Login ?? "—")</td></tr>
+                            }
+                            @if (string.Equals(_source.Provider, "Kafka", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <tr><td style="color: var(--mud-palette-text-secondary);">Consumer group prefix</td><td>@(_source.ConsumerGroupPrefix ?? "—")</td></tr>
+                                <tr><td style="color: var(--mud-palette-text-secondary);">Auto-generate group</td><td>@(_source.ConsumerGroupAutoGenerate ? "Yes" : "No")</td></tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                    <MudStack Row="true" Class="mt-2">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.Edit" Href="@MainRoutes.GetSourceEditRoute(SourceId)">Edit parameters</MudButton>
+                    </MudStack>
+                </MudPaper>
+
+                <MudText Typo="Typo.subtitle2" Class="mt-4">Tables</MudText>
+                @if (_tablesLoading)
+                {
+                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                }
+                else if (_tables.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info">No tables. Import structure from the Edit page.</MudAlert>
+                }
+                else
+                {
+                    <MudSimpleTable Dense="true" Hover="true" Striped="true" Breakpoint="Breakpoint.Sm">
+                        <thead>
+                            <tr>
+                                <th>Schema</th>
+                                <th>Table</th>
+                                <th>Description</th>
+                                <th style="width:80px"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var table in _tables)
+                            {
+                                <tr>
+                                    <td>@(table.SchemaName ?? "—")</td>
+                                    <td><MudLink Href="@MainRoutes.GetTableRoute(table.Id, SourceId)" Style="font-weight: 500;">@(table.DisplayName ?? table.Name)</MudLink></td>
+                                    <td>@(table.Description != null && table.Description.Length > 80 ? table.Description[..77] + "…" : table.Description ?? "—")</td>
+                                    <td>
+                                        <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Href="@MainRoutes.GetTableRoute(table.Id, SourceId)" Title="Open table" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+            </MudStack>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter] public Guid SourceId { get; set; }
+
+    [Inject] private ICatalogManager Catalog { get; set; } = null!;
+    [Inject] private ICatalogRefreshService CatalogRefresh { get; set; } = null!;
+
+    private static readonly MudMarkdownProps _markdownProps = new();
+
+    private bool _loading = true;
+    private bool _tablesLoading = true;
+    private CatalogNodeInfo? _source;
+    private ConnectionHealthInfo? _status;
+    private List<DbEntityInfo> _tables = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSource();
+        await LoadStatus();
+        await LoadTables();
+    }
+
+    private async Task LoadSource()
+    {
+        try
+        {
+            _source = await Catalog.GetNodeAsync(SourceId, CancellationToken.None);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadStatus()
+    {
+        try
+        {
+            _status = await Catalog.GetConnectionStatusAsync(SourceId, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _status = new ConnectionHealthInfo { Status = ConnectionStatusInfo.Failed, Message = ex.Message };
+        }
+    }
+
+    private async Task LoadTables()
+    {
+        _tablesLoading = true;
+        try
+        {
+            var list = await Catalog.GetEntitiesAsync(SourceId, CancellationToken.None);
+            _tables = list?.ToList() ?? new List<DbEntityInfo>();
+        }
+        finally
+        {
+            _tablesLoading = false;
+        }
+    }
+}

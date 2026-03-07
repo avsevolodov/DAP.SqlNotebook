@@ -14,6 +14,7 @@ namespace DAP.SqlNotebook.BL.DataAccess
         public DbSet<NotebookEntity> Notebooks => Set<NotebookEntity>();
         public DbSet<NotebookCellEntity> NotebookCells => Set<NotebookCellEntity>();
         public DbSet<WorkspaceEntity> Workspaces => Set<WorkspaceEntity>();
+        public DbSet<UserWorkspaceFavoriteEntity> UserWorkspaceFavorites => Set<UserWorkspaceFavoriteEntity>();
 
         public DbSet<DbEntityDescription> DbEntities => Set<DbEntityDescription>();
         public DbSet<DbFieldDescription> DbFields => Set<DbFieldDescription>();
@@ -60,6 +61,7 @@ namespace DAP.SqlNotebook.BL.DataAccess
                 e.HasKey(x => x.Id);
                 e.Property(x => x.Name).HasMaxLength(256).IsRequired();
                 e.Property(x => x.DisplayName).HasMaxLength(512);
+                e.Property(x => x.SchemaName).HasMaxLength(256);
                 e.HasIndex(x => x.Name).IsUnique();
                 e.Property(x => x.Description).HasColumnType("nvarchar(max)");
             });
@@ -112,7 +114,13 @@ namespace DAP.SqlNotebook.BL.DataAccess
                 e.Property(x => x.Name).HasMaxLength(256).IsRequired();
                 e.Property(x => x.Description).HasMaxLength(2048);
                 e.Property(x => x.OwnerLogin).HasMaxLength(256);
+                e.Property(x => x.IsFolder);
                 e.HasIndex(x => x.OwnerLogin);
+                e.HasIndex(x => x.ParentId);
+                e.HasOne<WorkspaceEntity>()
+                    .WithMany()
+                    .HasForeignKey(x => x.ParentId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
             modelBuilder.Entity<AiAssistMessageEntity>(e =>
@@ -141,6 +149,17 @@ namespace DAP.SqlNotebook.BL.DataAccess
                 e.HasIndex(x => x.Login).IsUnique();
                 e.Property(x => x.Login).HasMaxLength(256);
                 e.Property(x => x.Role).HasMaxLength(32);
+            });
+
+            modelBuilder.Entity<UserWorkspaceFavoriteEntity>(e =>
+            {
+                e.HasKey(x => new { x.UserLogin, x.WorkspaceId });
+                e.Property(x => x.UserLogin).HasMaxLength(256);
+                e.HasIndex(x => x.UserLogin);
+                e.HasOne<WorkspaceEntity>()
+                    .WithMany()
+                    .HasForeignKey(x => x.WorkspaceId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }

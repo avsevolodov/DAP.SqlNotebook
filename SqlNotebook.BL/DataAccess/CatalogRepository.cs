@@ -289,6 +289,7 @@ public class CatalogRepository : ICatalogRepository
                 Id = e.Id,
                 Name = e.Name,
                 DisplayName = e.DisplayName,
+                SchemaName = e.SchemaName,
                 Description = e.Description,
             })
             .ToListAsync(ct)
@@ -315,6 +316,7 @@ public class CatalogRepository : ICatalogRepository
                 Id = e.Id,
                 Name = e.Name,
                 DisplayName = e.DisplayName,
+                SchemaName = e.SchemaName,
                 Description = e.Description,
             })
             .ToListAsync(ct)
@@ -348,6 +350,7 @@ public class CatalogRepository : ICatalogRepository
                 Id = e.Id,
                 Name = e.Name,
                 DisplayName = e.DisplayName,
+                SchemaName = e.SchemaName,
                 Description = e.Description,
             })
             .ToListAsync(ct)
@@ -360,11 +363,11 @@ public class CatalogRepository : ICatalogRepository
         var e = await _db.DbEntities
             .AsNoTracking()
             .Where(x => x.Id == entityId)
-            .Select(x => new { x.Id, x.Name, x.DisplayName, x.Description })
+            .Select(x => new { x.Id, x.Name, x.DisplayName, x.SchemaName, x.Description })
             .FirstOrDefaultAsync(ct)
             .ConfigureAwait(false);
         if (e == null) return null;
-        return new DbEntityInfo { Id = e.Id, Name = e.Name, DisplayName = e.DisplayName, Description = e.Description };
+        return new DbEntityInfo { Id = e.Id, Name = e.Name, DisplayName = e.DisplayName, SchemaName = e.SchemaName, Description = e.Description };
     }
 
     public async Task<DbEntityInfo> CreateEntityAsync(CreateDbEntityParams create, CancellationToken ct = default)
@@ -374,6 +377,7 @@ public class CatalogRepository : ICatalogRepository
             Id = Guid.NewGuid(),
             Name = create.Name.Trim(),
             DisplayName = create.DisplayName?.Trim(),
+            SchemaName = create.SchemaName?.Trim(),
             Description = create.Description?.Trim(),
         };
         _db.DbEntities.Add(entity);
@@ -383,6 +387,7 @@ public class CatalogRepository : ICatalogRepository
             Id = entity.Id,
             Name = entity.Name,
             DisplayName = entity.DisplayName,
+            SchemaName = entity.SchemaName,
             Description = entity.Description,
         };
     }
@@ -393,6 +398,7 @@ public class CatalogRepository : ICatalogRepository
         if (entity == null) return null;
         if (update.Name != null) entity.Name = update.Name.Trim();
         if (update.DisplayName != null) entity.DisplayName = update.DisplayName.Trim();
+        if (update.SchemaName != null) entity.SchemaName = update.SchemaName.Trim();
         if (update.Description != null) entity.Description = update.Description.Trim();
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
         return await GetEntityByIdAsync(entityId, ct).ConfigureAwait(false);

@@ -1,0 +1,231 @@
+@page "/schema-catalog/tables/{EntityId:guid}"
+@page "/schema-catalog/sources/{SourceId:guid}/tables/{EntityId:guid}"
+@using System.Threading
+@using DAP.SqlNotebook.Contract.Entities
+@using DAP.SqlNotebook.Service.Client.V1
+@using DAP.SqlNotebook.UI.Helpers
+@using DAP.Markdown
+@using global::MudBlazor
+@using Microsoft.AspNetCore.Components.Web
+
+<PageTitle>@(_entity?.Name ?? "Table")</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="0">
+    <MudStack Spacing="3">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudLink Href="@MainRoutes.SchemaCatalog" Typo="Typo.body2">← Catalog</MudLink>
+            @if (SourceId != Guid.Empty)
+            {
+                <MudLink Href="@MainRoutes.GetSourceViewRoute(SourceId)" Typo="Typo.body2">← Source</MudLink>
+            }
+        </MudStack>
+
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else if (_entity == null)
+        {
+            <MudAlert Severity="Severity.Warning">Table not found.</MudAlert>
+        }
+        else
+        {
+            <MudStack Spacing="3">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <span class="material-icons" style="color: var(--mud-palette-secondary); font-size: 28px;">table_chart</span>
+                    @if (!string.IsNullOrWhiteSpace(_entity.SchemaName))
+                    {
+                        <MudText Typo="Typo.body1" Color="Color.Secondary">@(_entity.SchemaName).</MudText>
+                    }
+                    <MudText Typo="Typo.h5">@(_entity.DisplayName ?? _entity.Name)</MudText>
+                    @if (!string.IsNullOrWhiteSpace(_entity.Name) && _entity.Name != (_entity.DisplayName ?? _entity.Name))
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@_entity.Name</MudText>
+                    }
+                </MudStack>
+
+                @if (!string.IsNullOrWhiteSpace(_entity.Description))
+                {
+                    <MudText Typo="Typo.subtitle2">Description</MudText>
+                    <MudPaper Class="pa-3" Outlined="true">
+                        <MudMarkdown Value="@(_entity.Description ?? "")" Props="@_markdownProps" />
+                    </MudPaper>
+                }
+
+                <MudText Typo="Typo.subtitle2" Class="mt-4">Columns</MudText>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddField">Add field</MudButton>
+                </MudStack>
+                @if (_fields.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info">No columns.</MudAlert>
+                }
+                else
+                {
+                    <MudSimpleTable Dense="true" Hover="true" Striped="true" Breakpoint="Breakpoint.Sm">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Data type</th>
+                                <th>Nullable</th>
+                                <th>Primary key</th>
+                                <th>Description</th>
+                                <th style="width: 56px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var f in _fields)
+                            {
+                                <tr>
+                                    <td>@f.Name</td>
+                                    <td>@(f.DataType ?? "—")</td>
+                                    <td>@(f.IsNullable ? "Yes" : "No")</td>
+                                    <td>@(f.IsPrimaryKey ? "Yes" : "—")</td>
+                                    <td>@(f.Description ?? "—")</td>
+                                    <td>
+                                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditField(f))" Title="Edit field" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+            </MudStack>
+        }
+    </MudStack>
+</MudPaper>
+
+<MudDialog @bind-Visible="_showFieldDialog" Options="@(new DialogOptions { CloseOnEscapeKey = true })">
+    <TitleContent><MudText Typo="Typo.h6">@(_editingFieldId.HasValue ? "Edit field" : "New field")</MudText></TitleContent>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudTextField @bind-Value="_editFieldName" Label="Name" Variant="Variant.Outlined" Required />
+            <MudTextField @bind-Value="_editFieldDataType" Label="Data type" Variant="Variant.Outlined" />
+            <MudSwitch @bind-Value="_editFieldIsNullable" Label="Nullable" />
+            <MudSwitch @bind-Value="_editFieldIsPrimaryKey" Label="Primary key" />
+            <MudTextField @bind-Value="_editFieldDescription" Label="Description" Variant="Variant.Outlined" Lines="3" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseEditFieldDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveField" Disabled="@string.IsNullOrWhiteSpace(_editFieldName)">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public Guid EntityId { get; set; }
+    [Parameter] public Guid SourceId { get; set; }
+
+    [Inject] private ICatalogManager Catalog { get; set; } = null!;
+    [Inject] private ISnackbar Snackbar { get; set; } = null!;
+
+    private static readonly MudMarkdownProps _markdownProps = new();
+
+    private bool _loading = true;
+    private DbEntityInfo? _entity;
+    private List<DbFieldInfo> _fields = new();
+    private bool _showFieldDialog;
+    private Guid? _editingFieldId;
+    private string _editFieldName = "";
+    private string? _editFieldDataType;
+    private bool _editFieldIsNullable;
+    private bool _editFieldIsPrimaryKey;
+    private string? _editFieldDescription;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEntity();
+        await LoadFields();
+    }
+
+    private async Task LoadEntity()
+    {
+        try
+        {
+            _entity = await Catalog.GetEntityAsync(EntityId, CancellationToken.None);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadFields()
+    {
+        try
+        {
+            var list = await Catalog.GetFieldsAsync(EntityId, CancellationToken.None);
+            _fields = list?.ToList() ?? new List<DbFieldInfo>();
+        }
+        catch { _fields = new(); }
+    }
+
+    private void OpenEditField(DbFieldInfo f)
+    {
+        _editingFieldId = f.Id;
+        _editFieldName = f.Name ?? "";
+        _editFieldDataType = f.DataType;
+        _editFieldIsNullable = f.IsNullable;
+        _editFieldIsPrimaryKey = f.IsPrimaryKey;
+        _editFieldDescription = f.Description;
+        _showFieldDialog = true;
+    }
+
+    private void OpenAddField()
+    {
+        _editingFieldId = null;
+        _editFieldName = "";
+        _editFieldDataType = null;
+        _editFieldIsNullable = true;
+        _editFieldIsPrimaryKey = false;
+        _editFieldDescription = null;
+        _showFieldDialog = true;
+    }
+
+    private void CloseEditFieldDialog()
+    {
+        _showFieldDialog = false;
+        _editingFieldId = null;
+    }
+
+    private async Task SaveField()
+    {
+        if (string.IsNullOrWhiteSpace(_editFieldName)) return;
+        try
+        {
+            if (_editingFieldId.HasValue)
+            {
+                await Catalog.UpdateFieldAsync(_editingFieldId.Value, new UpdateDbFieldInfo
+                {
+                    Name = _editFieldName.Trim(),
+                    DataType = string.IsNullOrWhiteSpace(_editFieldDataType) ? null : _editFieldDataType.Trim(),
+                    IsNullable = _editFieldIsNullable,
+                    IsPrimaryKey = _editFieldIsPrimaryKey,
+                    Description = string.IsNullOrWhiteSpace(_editFieldDescription) ? null : _editFieldDescription.Trim(),
+                }, CancellationToken.None);
+                Snackbar.Add("Field updated.", Severity.Success);
+                CloseEditFieldDialog();
+                await LoadFields();
+            }
+            else
+            {
+                await Catalog.CreateFieldAsync(new CreateDbFieldInfo
+                {
+                    EntityId = EntityId,
+                    Name = _editFieldName.Trim(),
+                    DataType = string.IsNullOrWhiteSpace(_editFieldDataType) ? null : _editFieldDataType.Trim(),
+                    IsNullable = _editFieldIsNullable,
+                    IsPrimaryKey = _editFieldIsPrimaryKey,
+                    Description = string.IsNullOrWhiteSpace(_editFieldDescription) ? null : _editFieldDescription.Trim(),
+                }, CancellationToken.None);
+                Snackbar.Add("Field added.", Severity.Success);
+                CloseEditFieldDialog();
+                await LoadFields();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+}

@@ -7,7 +7,7 @@
 @using global::MudBlazor
 @using Microsoft.AspNetCore.Components.Routing
 @using Microsoft.AspNetCore.Components.Web
-@using SnackbarExtensions = DAP.SqlNotebook.UI.SnackbarExtensions
+@using SnackbarExtensions = DAP.SqlNotebook.UI.Helpers.SnackbarExtensions
 @using MudBlazor
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
@@ -207,7 +207,7 @@
             _workspaces = (await WorkspaceManager.GetWorkspaces(CancellationToken.None)).ToList();
             _selectedWorkspaceId = created.Id;
             SnackbarExtensions.ShowPopupMessage(Snackbar, "Workspace created.", Severity.Success);
-            Navigation.NavigateTo($"/notebooks?workspaceId={created.Id:N}", forceLoad: false);
+            Navigation.NavigateTo(MainRoutes.GetNotebooksRoute(created.Id), forceLoad: false);
         }
         catch (HttpClientException<ProblemDetailsData>)
         {

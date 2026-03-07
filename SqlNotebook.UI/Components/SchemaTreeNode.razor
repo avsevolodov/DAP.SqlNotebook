@@ -1,4 +1,5 @@
 @using DAP.SqlNotebook.Contract.Entities
+@using DAP.SqlNotebook.UI.Helpers
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
 
@@ -29,6 +30,7 @@
                 </div>
             </ActivatorContent>
             <ChildContent>
+                <MudMenuItem Href="@(Node.EntityId.HasValue ? MainRoutes.GetTableRoute(Node.EntityId.Value) : null)" OnClick="@(() => _tableMenuOpen = false)">Open table</MudMenuItem>
                 <MudMenuItem OnClick="@(async () => { await InsertName(); _tableMenuOpen = false; })">Insert table name</MudMenuItem>
                 <MudMenuItem OnClick="@(async () => { await InsertPreview(); _tableMenuOpen = false; })">Preview (SELECT … LIMIT 10)</MudMenuItem>
                 <MudMenuItem OnClick="@(async () => { await InsertDescription(); _tableMenuOpen = false; })">Посмотреть описание таблицы</MudMenuItem>
@@ -72,16 +74,18 @@
             @if (Node.Type == "Database" || Node.Type == "Source")
             {
                 <span class="material-icons schema-tree-icon" style="color: var(--mud-palette-primary);" aria-hidden="true">storage</span>
+                <a href="@MainRoutes.GetSourceViewRoute(Node.Id)" class="schema-tree-name" style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-decoration: none; color: inherit;" title="@Node.Name" @onclick:stopPropagation="true">@Node.Name</a>
             }
             else if (Node.Type == "Topic")
             {
                 <span class="material-icons schema-tree-icon" style="color: var(--mud-palette-secondary);" aria-hidden="true">list_alt</span>
+                <span class="schema-tree-name" style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;" title="@Node.Name">@Node.Name</span>
             }
             else
             {
                 <span class="material-icons schema-tree-icon" aria-hidden="true">folder</span>
+                <span class="schema-tree-name" style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;" title="@Node.Name">@Node.Name</span>
             }
-            <span class="schema-tree-name" style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;" title="@Node.Name">@Node.Name</span>
         </div>
     }
     @if (CanExpand && IsExpanded && Children.Count > 0)

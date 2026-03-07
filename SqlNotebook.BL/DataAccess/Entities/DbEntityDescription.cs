@@ -17,6 +17,9 @@ namespace DAP.SqlNotebook.BL.DataAccess.Entities
         [MaxLength(512)]
         public string? DisplayName { get; set; }
 
+        [MaxLength(256)]
+        public string? SchemaName { get; set; }
+
         public string? Description { get; set; }
     }
 }

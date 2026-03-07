@@ -5,7 +5,7 @@
 @using DAP.SqlNotebook.Service.Client.Exceptions
 @using DAP.SqlNotebook.UI.Helpers
 @using global::MudBlazor
-@using SnackbarExtensions = DAP.SqlNotebook.UI.SnackbarExtensions
+@using SnackbarExtensions = DAP.SqlNotebook.UI.Helpers.SnackbarExtensions
 @using Microsoft.AspNetCore.Components.Web
 @using MudBlazor
 @inject IWorkspaceManager WorkspaceManager
@@ -27,28 +27,28 @@
         <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-2" />
     }
 
-    <MudTable T="WorkspaceInfo" Items="@_workspaces" Hover="true" Breakpoint="Breakpoint.Sm" Class="mt-4">
-        <HeaderContent>
-            <MudTh>Name</MudTh>
-            <MudTh>Description</MudTh>
-            <MudTh Style="width:240px;">Actions</MudTh>
-        </HeaderContent>
-        <RowTemplate Context="row">
-            <MudTd DataLabel="Name">
-                <MudLink Href="@GetNotebooksRoute(row.Id)" Style="font-weight: 500;">
-                    @row.Name
-                </MudLink>
-            </MudTd>
-            <MudTd DataLabel="Description">@(row.Description ?? "—")</MudTd>
-            <MudTd DataLabel="Actions">
-                <MudIconButton Icon="@Icons.Material.Filled.List" Href="@GetNotebooksRoute(row.Id)" Title="Notebooks in workspace" />
-                <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@(() => OpenEditDialog(row))" Title="Edit" />
-                <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="@(() => ConfirmDelete(row))" Title="Delete" Color="Color.Error" />
-            </MudTd>
-        </RowTemplate>
-    </MudTable>
+    <MudGrid Class="mt-4">
+        @foreach (var row in _myWorkspacesGrid)
+        {
+            <MudItem xs="12" sm="6" md="4" lg="3">
+                <MudCard Class="fill-height" Elevation="2">
+                    <MudCardHeader>
+                        <MudLink Href="@MainRoutes.GetNotebooksRoute(row.Id)" Typo="Typo.h6" Style="font-weight: 500;">@row.Name</MudLink>
+                    </MudCardHeader>
+                    <MudCardContent Class="pt-0">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@(row.Description ?? "—")</MudText>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudIconButton Icon="@Icons.Material.Filled.List" Href="@MainRoutes.GetNotebooksRoute(row.Id)" Title="Notebooks" Size="Size.Small" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@(() => OpenEditDialog(row))" Title="Edit" Size="Size.Small" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="@(() => ConfirmDelete(row))" Title="Delete" Color="Color.Error" Size="Size.Small" />
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
 
-    @if (!_loading && _workspaces.Count == 0)
+    @if (!_loading && _myWorkspacesGrid.Count == 0)
     {
         <MudAlert Severity="Severity.Info" Class="mt-4">No workspaces yet. Create one to organize your notebooks.</MudAlert>
     }
@@ -60,8 +60,19 @@
     </TitleContent>
     <DialogContent>
         <MudStack @onkeydown="OnEditDialogKeyDown">
+            <MudSwitch @bind-Value="_editIsFolder" Label="Folder (for grouping only)" Color="Color.Primary" Class="mt-2" Disabled="@_isEdit" />
             <MudTextField @bind-Value="_editName" Label="Name" Variant="Variant.Outlined" Class="mt-2" Required />
             <MudTextField @bind-Value="_editDescription" Label="Description" Variant="Variant.Outlined" Class="mt-2" Lines="2" />
+            @if (_folderOptions.Count > 0)
+            {
+                <MudSelect T="Guid?" @bind-Value="_editParentId" Label="Parent folder" Variant="Variant.Outlined" Class="mt-2" Clearable="true">
+                    <MudSelectItem T="Guid?" Value="null">— Root —</MudSelectItem>
+                    @foreach (var f in _folderOptions)
+                    {
+                        <MudSelectItem T="Guid?" Value="@f.Id">@f.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            }
         </MudStack>
     </DialogContent>
     <DialogActions>
@@ -72,17 +83,18 @@
 
 @code {
     private List<WorkspaceInfo> _workspaces = new();
+    private List<WorkspaceInfo> _folderOptions = new();
     private bool _loading = true;
     private bool _showEditDialog;
     private bool _isEdit;
     private Guid _editId;
     private string _editName = "";
     private string? _editDescription;
+    private bool _editIsFolder;
+    private Guid? _editParentId;
 
-    private string GetNotebooksRoute(Guid workspaceId)
-    {
-        return $"/notebooks?workspaceId={workspaceId:N}";
-    }
+    private List<WorkspaceInfo> _myWorkspacesGrid => _workspaces.Where(x => !x.IsFolder).ToList();
+
     protected override async Task OnInitializedAsync()
     {
         await LoadWorkspaces();
@@ -114,6 +126,9 @@
         _editId = default;
         _editName = "";
         _editDescription = null;
+        _editIsFolder = false;
+        _editParentId = null;
+        _folderOptions = _workspaces.Where(x => x.IsFolder).OrderBy(x => x.Name).ToList();
         _showEditDialog = true;
     }
 
@@ -123,6 +138,9 @@
         _editId = ws.Id;
         _editName = ws.Name ?? "";
         _editDescription = ws.Description;
+        _editIsFolder = ws.IsFolder;
+        _editParentId = ws.ParentId;
+        _folderOptions = _workspaces.Where(x => x.IsFolder && x.Id != ws.Id).OrderBy(x => x.Name).ToList();
         _showEditDialog = true;
     }
 
@@ -153,6 +171,8 @@
                     Id = _editId,
                     Name = _editName.Trim(),
                     Description = string.IsNullOrWhiteSpace(_editDescription) ? null : _editDescription.Trim(),
+                    ParentId = _editParentId,
+                    IsFolder = _editIsFolder,
                 }, CancellationToken.None);
                 SnackbarExtensions.ShowPopupMessage(Snackbar, "Workspace updated.", Severity.Success);
             }
@@ -162,11 +182,13 @@
                 {
                     Name = _editName.Trim(),
                     Description = string.IsNullOrWhiteSpace(_editDescription) ? null : _editDescription.Trim(),
+                    ParentId = _editParentId,
+                    IsFolder = _editIsFolder,
                 }, CancellationToken.None);
                 SnackbarExtensions.ShowPopupMessage(Snackbar, "Workspace created.", Severity.Success);
                 _showEditDialog = false;
                 await LoadWorkspaces();
-                Navigation.NavigateTo(GetNotebooksRoute(created.Id), forceLoad: false);
+                Navigation.NavigateTo(MainRoutes.GetNotebooksRoute(created.Id), forceLoad: false);
             }
         }
         catch (HttpClientException<ProblemDetailsData>)

@@ -17,7 +17,36 @@
 	<ItemGroup>
 		<Content Remove="**\package*.json" />
 		<None Remove="*.csproj.DotSettings" />
-		<Content Include="Resources\MudBlazor.Markdown.css" Link="wwwroot\MudBlazor.Markdown.css" />
+		<None Include="wwwroot\Fonts\MathJax_AMS-Regular.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Calligraphic-Bold.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Calligraphic-Regular.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Fraktur-Bold.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Fraktur-Regular.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Main-Bold.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Main-Italic.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Main-Regular.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Math-BoldItalic.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Math-Italic.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Math-Regular.woff" />
+		<None Include="wwwroot\Fonts\MathJax_SansSerif-Bold.woff" />
+		<None Include="wwwroot\Fonts\MathJax_SansSerif-Italic.woff" />
+		<None Include="wwwroot\Fonts\MathJax_SansSerif-Regular.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Script-Regular.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Size1-Regular.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Size2-Regular.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Size3-Regular.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Size4-Regular.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Typewriter-Regular.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Vector-Bold.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Vector-Regular.woff" />
+		<None Include="wwwroot\Fonts\MathJax_Zero.woff" />
+		<None Include="wwwroot\MudBlazor.Markdown.css" />
+		<None Include="wwwroot\MudBlazor.Markdown.js" />
+		<None Include="wwwroot\MudBlazor.Markdown.MathJax.min.js" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="Resources\" />
 	</ItemGroup>
 
 </Project>

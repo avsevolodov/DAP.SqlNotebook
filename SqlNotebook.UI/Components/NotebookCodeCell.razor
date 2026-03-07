@@ -51,6 +51,7 @@
                     <div class="notebook-cell-result-overlay">
                         <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
                         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">Running…</MudText>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" Class="mt-2" StartIcon="@Icons.Material.Filled.Stop" OnClick="CancelRun">Cancel</MudButton>
                     </div>
                 }
                 @if (!string.IsNullOrWhiteSpace(_cellError))
@@ -75,7 +76,6 @@
     [Parameter] public EventCallback OnCellUpdated { get; set; }
 
     [Inject] private INotebookManager NotebookManager { get; set; } = null!;
-    [Inject] private HttpClient Http { get; set; } = null!;
     [Inject] private IJSRuntime JS { get; set; } = null!;
 
     private bool _collapsed;
@@ -152,7 +152,7 @@
         }
         catch (OperationCanceledException)
         {
-            _cellError = "Cancelled.";
+            _cellError = "Query was cancelled.";
         }
         catch (Exception ex)
         {
@@ -186,7 +186,7 @@
     private async Task FormatCell()
     {
         if (Cell.Type != NotebookCellTypeInfo.Sql && Cell.Type != NotebookCellTypeInfo.Chart) return;
-        var formatted = SqlFormatter.Format(Cell.Content);
+        var formatted = SqlFormatterHelper.Format(Cell.Content);
         if (formatted == Cell.Content) return;
         if (OnFormatCell.HasDelegate)
             await OnFormatCell.InvokeAsync((Cell.Id, formatted));
@@ -196,6 +196,11 @@
     {
         if (OnDeleteCell.HasDelegate)
             await OnDeleteCell.InvokeAsync(Cell);
+    }
+
+    private void CancelRun()
+    {
+        _runCts?.Cancel();
     }
 
     private async Task ClearCellError()

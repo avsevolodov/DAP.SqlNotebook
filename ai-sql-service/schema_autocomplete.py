@@ -4,7 +4,9 @@ Schema text for autocomplete: focus tables + related tables (RAG), columns order
 from __future__ import annotations
 
 import re
-from typing import Optional
+from typing import Optional, Union
+
+from rag_models import RagSchema
 
 # Numeric / aggregate-friendly types (for "measures")
 MEASURE_TYPE_PATTERN = re.compile(
@@ -46,8 +48,26 @@ def _sort_columns_for_autocomplete(fields: list[dict], max_columns: int = 15) ->
     return ordered[:max_columns]
 
 
+def _entities_list(schema: Union[RagSchema, dict]) -> list:
+    """Normalize schema to list of entity dicts (id, name, displayName, fields) for iteration."""
+    if isinstance(schema, RagSchema):
+        return [
+            {
+                "id": e.id,
+                "name": e.name,
+                "displayName": e.display_name,
+                "Name": e.name,
+                "DisplayName": e.display_name,
+                "fields": [{"name": f.name, "dataType": f.data_type, "Name": f.name, "DataType": f.data_type, "isPrimaryKey": f.is_primary_key, "IsPrimaryKey": f.is_primary_key} for f in e.fields],
+                "Fields": [{"name": f.name, "dataType": f.data_type, "Name": f.name, "DataType": f.data_type, "isPrimaryKey": f.is_primary_key, "IsPrimaryKey": f.is_primary_key} for f in e.fields],
+            }
+            for e in schema.entities
+        ]
+    return schema.get("entities") or schema.get("Entities") or []
+
+
 def expand_focus_entities_with_related(
-    schema: dict,
+    schema: Union[RagSchema, dict],
     focus_entity_names: list[str],
     retriever,
     related_k: int = 5,
@@ -63,7 +83,7 @@ def expand_focus_entities_with_related(
     out = set(focus_entity_names)
     if not retriever:
         return out
-    entities = schema.get("entities") or schema.get("Entities") or []
+    entities = _entities_list(schema)
     id_to_name: dict[str, str] = {}
     for e in entities:
         display = (e.get("displayName") or e.get("DisplayName") or e.get("name") or e.get("Name") or "").strip()
@@ -86,7 +106,7 @@ def expand_focus_entities_with_related(
 
 
 def build_schema_compact_for_autocomplete(
-    schema: dict,
+    schema: Union[RagSchema, dict],
     focus_entity_names: Optional[list[str]] = None,
     retriever=None,
     related_k: int = 5,
@@ -98,7 +118,7 @@ def build_schema_compact_for_autocomplete(
     - Expand with related tables via RAG (retriever).
     - For each table, include columns in order: PK, FK-like, measure types, rest; max max_columns_per_table.
     """
-    entities = schema.get("entities") or schema.get("Entities") or []
+    entities = _entities_list(schema)
     if not entities:
         return "tables: (none)"
     if focus_entity_names:

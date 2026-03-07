@@ -5,7 +5,7 @@ using System.Linq;
 /// <summary>
 /// Simple SQL formatter for notebook cell display (keyword newlines, trim).
 /// </summary>
-public static class SqlFormatter
+public static class SqlFormatterHelper
 {
     public static string Format(string? sql)
     {

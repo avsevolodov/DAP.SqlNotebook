@@ -90,6 +90,7 @@ public sealed class SchemaImportService : ISchemaImportService
                     {
                         Name = qualifiedName,
                         DisplayName = t.Name,
+                        SchemaName = t.Schema,
                         Description = entity.Description,
                     }, ct).ConfigureAwait(false);
 
@@ -140,6 +141,7 @@ public sealed class SchemaImportService : ISchemaImportService
                     {
                         Name = qualifiedName,
                         DisplayName = t.Name,
+                        SchemaName = t.Schema,
                         Description = null,
                     }, ct).ConfigureAwait(false);
 

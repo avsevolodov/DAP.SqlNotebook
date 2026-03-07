@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Blazor.Extensions.Logging;
 using DAP.Markdown;
 using DAP.SqlNotebook.UI.Helpers;
+using DAP.SqlNotebook.UI.Services;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -41,6 +42,7 @@ namespace DAP.SqlNotebook.UI
             builder.Services.AddScoped<ICurrentNotebookContext, CurrentNotebookContext>();
             builder.Services.AddScoped<ICurrentDatabaseContext, CurrentDatabaseContext>();
             builder.Services.AddScoped<INotebookToolbarService, NotebookToolbarService>();
+            builder.Services.AddScoped<IWorkspaceFavoritesService, WorkspaceFavoritesService>();
 
             // builder.Services.AddScoped<IConnectionManager, ConnectionManager>();
 

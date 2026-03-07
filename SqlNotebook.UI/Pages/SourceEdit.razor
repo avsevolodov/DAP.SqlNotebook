@@ -1,0 +1,208 @@
+@page "/schema-catalog/sources/new"
+@page "/schema-catalog/sources/{SourceId:guid}/edit"
+@using System.Threading
+@using DAP.SqlNotebook.Contract.Entities
+@using DAP.SqlNotebook.Service.Client.V1
+@using DAP.SqlNotebook.UI.Helpers
+@using DAP.Markdown
+@using global::MudBlazor
+@using Microsoft.AspNetCore.Components.Web
+
+<PageTitle>@(IsNew ? "New source" : "Edit source")</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="0">
+    <MudStack Spacing="3">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudLink Href="@MainRoutes.SchemaCatalog" Typo="Typo.body2">← Catalog</MudLink>
+            @if (!IsNew && _source != null)
+            {
+                <MudLink Href="@MainRoutes.GetSourceViewRoute(SourceId)" Typo="Typo.body2">← View source</MudLink>
+            }
+        </MudStack>
+
+        @if (_loading && !IsNew)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else
+        {
+            <MudPaper Class="pa-4" Outlined="true">
+                <MudText Typo="Typo.h6" Class="mb-4">@(IsNew ? "New source" : "Edit source")</MudText>
+                <MudStack Spacing="3">
+                    <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Required />
+                    <MudTextField @bind-Value="_owner" Label="Owner" Variant="Variant.Outlined" />
+                    <MudSelect T="string?" @bind-Value="_provider" Label="Provider" Variant="Variant.Outlined">
+                        <MudSelectItem T="string?" Value="@("MSSQL")">MSSQL</MudSelectItem>
+                        <MudSelectItem T="string?" Value="@("ClickHouse")">ClickHouse</MudSelectItem>
+                        <MudSelectItem T="string?" Value="@("Kafka")">Kafka</MudSelectItem>
+                    </MudSelect>
+                    <MudTextField @bind-Value="_connectionInfo" Label="@(_provider == "Kafka" ? "Bootstrap servers (host:port)" : "Connection (server or connection string)")" Variant="Variant.Outlined" Lines="2" />
+                    <MudTextField @bind-Value="_databaseName" Label="Database name" Variant="Variant.Outlined" />
+                    <MudSelect T="string?" @bind-Value="_authType" Label="Authentication" Variant="Variant.Outlined">
+                        <MudSelectItem T="string?" Value="@("Kerberos")">Kerberos (Windows)</MudSelectItem>
+                        <MudSelectItem T="string?" Value="@("Basic")">Basic (login / password)</MudSelectItem>
+                    </MudSelect>
+                    @if (string.Equals(_authType, "Basic", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <MudTextField @bind-Value="_login" Label="Login" Variant="Variant.Outlined" />
+                        <MudTextField @bind-Value="_password" Label="Password" Variant="Variant.Outlined" InputType="InputType.Password" Placeholder="@(!IsNew ? "Leave empty to keep current" : "")" />
+                    }
+                    @if (string.Equals(_provider, "Kafka", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <MudTextField @bind-Value="_kafkaConsumerGroupPrefix" Label="Consumer group prefix" Variant="Variant.Outlined" />
+                        <MudCheckBox T="bool" @bind-Checked="_kafkaConsumerGroupAutoGenerate" Label="Auto-generate (append GUID)" Color="Color.Primary" />
+                    }
+                    <MudText Typo="Typo.subtitle2">Description (Markdown)</MudText>
+                    <MudTextField @bind-Value="_description" Variant="Variant.Outlined" Lines="8" Class="markdown-description-field" />
+
+                    <MudStack Row="true" Spacing="2" Class="mt-4">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" StartIcon="@Icons.Material.Filled.Save" Disabled="@string.IsNullOrWhiteSpace(_name)">Save</MudButton>
+                        @if (!IsNew)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ImportStructure" StartIcon="@Icons.Material.Filled.Download" Disabled="@_importing">Import structure</MudButton>
+                        }
+                        <MudButton Variant="Variant.Text" Href="@(IsNew ? MainRoutes.SchemaCatalog : MainRoutes.GetSourceViewRoute(SourceId))">Cancel</MudButton>
+                    </MudStack>
+                    @if (!IsNew && _importing)
+                    {
+                        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                    }
+                </MudStack>
+            </MudPaper>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter] public Guid SourceId { get; set; }
+
+    [Inject] private ICatalogManager Catalog { get; set; } = null!;
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+    [Inject] private ISnackbar Snackbar { get; set; } = null!;
+    [Inject] private ICatalogRefreshService CatalogRefresh { get; set; } = null!;
+
+    private bool IsNew => SourceId == Guid.Empty;
+    private bool _loading = true;
+    private bool _importing;
+    private CatalogNodeInfo? _source;
+    private string _name = "";
+    private string? _owner;
+    private string? _provider = "MSSQL";
+    private string? _connectionInfo;
+    private string? _databaseName;
+    private string? _authType = "Kerberos";
+    private string? _login;
+    private string? _password;
+    private string? _description;
+    private string _kafkaConsumerGroupPrefix = "sqlnotebook-peek";
+    private bool _kafkaConsumerGroupAutoGenerate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (IsNew)
+        {
+            _loading = false;
+            return;
+        }
+        try
+        {
+            _source = await Catalog.GetNodeAsync(SourceId, CancellationToken.None);
+            if (_source != null)
+            {
+                _name = _source.Name ?? "";
+                _owner = _source.Owner;
+                _provider = _source.Provider ?? "MSSQL";
+                _connectionInfo = _source.ConnectionInfo;
+                _databaseName = _source.DatabaseName;
+                _authType = _source.AuthType ?? "Kerberos";
+                _login = _source.Login;
+                _password = null;
+                _description = _source.Description;
+                _kafkaConsumerGroupPrefix = _source.ConsumerGroupPrefix ?? "sqlnotebook-peek";
+                _kafkaConsumerGroupAutoGenerate = _source.ConsumerGroupAutoGenerate;
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(_name)) return;
+        try
+        {
+            if (IsNew)
+            {
+                var create = new CatalogNodeCreateInfo
+                {
+                    ParentId = null,
+                    Type = 1,
+                    Name = _name.Trim(),
+                    Owner = _owner,
+                    Provider = _provider,
+                    ConnectionInfo = _connectionInfo,
+                    DatabaseName = _databaseName,
+                    AuthType = _authType,
+                    Login = _login,
+                    Password = _password,
+                    Description = _description,
+                    ConsumerGroupPrefix = string.Equals(_provider, "Kafka", StringComparison.OrdinalIgnoreCase) ? _kafkaConsumerGroupPrefix : null,
+                    ConsumerGroupAutoGenerate = string.Equals(_provider, "Kafka", StringComparison.OrdinalIgnoreCase) && _kafkaConsumerGroupAutoGenerate,
+                };
+                var created = await Catalog.CreateNodeAsync(create, CancellationToken.None);
+                if (created != null)
+                {
+                    Snackbar.Add("Source created.", Severity.Success);
+                    CatalogRefresh.NotifyRefresh();
+                    Navigation.NavigateTo(MainRoutes.GetSourceViewRoute(created.Id), forceLoad: false);
+                }
+            }
+            else
+            {
+                var update = new CatalogNodeUpdateInfo
+                {
+                    Name = _name.Trim(),
+                    Owner = _owner,
+                    Provider = _provider,
+                    ConnectionInfo = _connectionInfo,
+                    DatabaseName = _databaseName,
+                    AuthType = _authType,
+                    Login = _login,
+                    Password = _password,
+                    Description = _description,
+                    ConsumerGroupPrefix = string.Equals(_provider, "Kafka", StringComparison.OrdinalIgnoreCase) ? _kafkaConsumerGroupPrefix : null,
+                    ConsumerGroupAutoGenerate = string.Equals(_provider, "Kafka", StringComparison.OrdinalIgnoreCase) ? _kafkaConsumerGroupAutoGenerate : null,
+                };
+                await Catalog.UpdateNodeAsync(SourceId, update, CancellationToken.None);
+                Snackbar.Add("Source updated.", Severity.Success);
+                CatalogRefresh.NotifyRefresh();
+                Navigation.NavigateTo(MainRoutes.GetSourceViewRoute(SourceId), forceLoad: false);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ImportStructure()
+    {
+        if (IsNew) return;
+        _importing = true;
+        try
+        {
+            var result = await Catalog.ImportStructureAsync(SourceId, CancellationToken.None);
+            Snackbar.Add($"Imported {result.TablesCount} tables, {result.FieldsCount} columns.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Import failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _importing = false;
+        }
+    }
+}

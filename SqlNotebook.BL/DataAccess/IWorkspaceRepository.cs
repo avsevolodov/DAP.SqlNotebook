@@ -13,6 +13,8 @@ public interface IWorkspaceRepository
     Task<IReadOnlyList<WorkspaceEntity>> GetAllAsync(CancellationToken ct = default);
     /// <summary>Workspaces owned by the given login; if login is null, returns all.</summary>
     Task<IReadOnlyList<WorkspaceEntity>> GetByOwnerAsync(string? ownerLogin, CancellationToken ct = default);
+    /// <summary>All workspace/folder nodes for building the common tree (no owner filter).</summary>
+    Task<IReadOnlyList<WorkspaceEntity>> GetTreeAsync(CancellationToken ct = default);
     Task<WorkspaceEntity> CreateAsync(WorkspaceEntity entity, CancellationToken ct = default);
     Task UpdateAsync(WorkspaceEntity entity, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);

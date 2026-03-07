@@ -114,26 +114,14 @@ def _fetch_indexing_data_via_endpoints() -> tuple[list[RagCatalogNode], list[Rag
             from schema_loader import get_schema_object
 
             schema = get_schema_object(force_refresh=True)
-            entities = schema.get("entities") or schema.get("Entities") or []
-            if entities:
-                raw_tables = []
-                for e in entities:
-                    eid = e.get("id") or e.get("Id")
-                    if eid is None:
-                        continue
-                    eid_str = str(eid).strip()
-                    raw_fields = e.get("fields") or e.get("Fields") or []
-                    raw_tables.append({
-                        "id": eid_str,
-                        "name": _str_or_empty(e.get("name") or e.get("Name")),
-                        "displayName": _str_or_empty(e.get("displayName") or e.get("DisplayName")),
-                        "description": _str_or_empty(e.get("description") or e.get("Description")),
-                        "fields": [_norm_entity_field(f) for f in raw_fields],
-                    })
+            if schema.entities:
+                entities_with_fields = list(schema.entities)
+                relations_flat = list(schema.relations)
                 logger.info(
                     "RAG index: using schema from GET /api/v1/schema (catalog/tables empty), entities=%d",
-                    len(raw_tables),
+                    len(entities_with_fields),
                 )
+                return db_nodes, entities_with_fields, relations_flat
         except Exception as ex:
             logger.warning("RAG fallback schema fetch failed: %s", ex)
 

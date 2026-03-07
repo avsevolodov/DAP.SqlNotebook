@@ -3,7 +3,6 @@
 @namespace DAP.SqlNotebook.UI.Pages
 @using System.Collections.Generic
 @using System.Linq
-@using System.Net.Http.Json
 @using System.Threading
 @using DAP.SqlNotebook.Contract.Entities
 @using DAP.SqlNotebook.Service.Client.V1
@@ -86,7 +85,8 @@
     [SupplyParameterFromQuery(Name = "workspaceId")] public Guid? WorkspaceId { get; set; }
 
     [Inject] private INotebookManager NotebookManager { get; set; } = null!;
-    [Inject] private HttpClient Http { get; set; } = null!;
+    [Inject] private ICatalogManager Catalog { get; set; } = null!;
+    [Inject] private IAiSqlClient AiSqlClient { get; set; } = null!;
     [Inject] private NavigationManager Navigation { get; set; } = null!;
     [Inject] private IJSRuntime JS { get; set; } = null!;
     [Inject] private DAP.SqlNotebook.UI.ICurrentNotebookContext CurrentNotebookContext { get; set; } = null!;
@@ -162,7 +162,7 @@
             {
                 try
                 {
-                    var node = await Http.GetFromJsonAsync<CatalogNodeInfo>($"api/v1/catalog/nodes/{_selectedDatabase.Id:N}", CancellationToken.None);
+                    var node = await Catalog.GetNodeAsync(_selectedDatabase.Id, CancellationToken.None);
                     _notebookDatabaseDescription = node?.Description;
                 }
                 catch { /* ignore */ }
@@ -234,8 +234,8 @@
     {
         try
         {
-            var list = await Http.GetFromJsonAsync<List<CatalogNodeInfo>>("api/v1/catalog/databases", CancellationToken.None);
-            return list ?? new List<CatalogNodeInfo>();
+            var list = await Catalog.GetDatabasesAsync(CancellationToken.None);
+            return list?.ToList() ?? new List<CatalogNodeInfo>();
         }
         catch
         {
@@ -281,7 +281,7 @@
         }
         catch (OperationCanceledException)
         {
-            _executionError = "Cancelled.";
+            _executionError = "Query was cancelled.";
         }
         catch (Exception ex)
         {
@@ -332,7 +332,7 @@
         }
         catch (OperationCanceledException)
         {
-            _executionError = "Cancelled.";
+            _executionError = "Query was cancelled.";
         }
         catch (Exception ex)
         {
@@ -368,21 +368,17 @@
             var columns = result.Columns?.Select(c => c.Name).ToList() ?? new List<string>();
             var rows = result.Rows?.Select(r => r.Values?.ToList() ?? new List<string>()).ToList() ?? new List<List<string>>();
             var suggestRequest = new SuggestChartRequestInfo { Columns = columns, Rows = rows };
-            var suggestResponse = await Http.PostAsJsonAsync("api/v1/ai/sql/suggest-chart", suggestRequest, _runCts.Token);
             var chartType = "line";
-            if (suggestResponse.IsSuccessStatusCode)
-            {
-                var suggest = await suggestResponse.Content.ReadFromJsonAsync<SuggestChartResponseInfo>(_runCts.Token);
-                if (!string.IsNullOrEmpty(suggest?.ChartType))
-                    chartType = suggest.ChartType.ToLowerInvariant();
-            }
+            var suggest = await AiSqlClient.SuggestChartAsync(suggestRequest, _runCts.Token);
+            if (!string.IsNullOrEmpty(suggest?.ChartType))
+                chartType = suggest.ChartType.ToLowerInvariant();
             if (result.Columns != null)
                 result.ChartType = chartType;
             _currentRunResult = result;
         }
         catch (OperationCanceledException)
         {
-            _executionError = "Cancelled.";
+            _executionError = "Query was cancelled.";
         }
         catch (Exception ex)
         {
@@ -470,7 +466,7 @@
         if (_notebook == null || node.EntityId == null) return;
         try
         {
-            var entity = await Http.GetFromJsonAsync<DbEntityInfo>($"api/v1/catalog/entities/{node.EntityId.Value:N}", CancellationToken.None);
+            var entity = await Catalog.GetEntityAsync(node.EntityId.Value, CancellationToken.None);
             if (entity == null) return;
             var content = string.IsNullOrWhiteSpace(entity.Description)
                 ? $"## {entity.DisplayName ?? entity.Name}\n\n*No description*"
@@ -546,18 +542,13 @@
 
     private async Task<List<CatalogNodeInfo>?> LoadCatalogNodesAsync(Guid? parentId)
     {
-        var url = parentId.HasValue
-            ? $"api/v1/catalog/nodes?parentId={parentId.Value:N}"
-            : "api/v1/catalog/nodes";
-        var list = await Http.GetFromJsonAsync<List<CatalogNodeInfo>>(url, CancellationToken.None);
-        return list;
+        var list = await Catalog.GetNodesAsync(parentId, CancellationToken.None);
+        return list?.ToList();
     }
 
     private async Task<string?> LoadEntitySelectTextAsync(Guid entityId)
     {
         var top = Math.Clamp(_selectTopCount, 1, 10000);
-        var res = await Http.GetAsync($"api/v1/catalog/entity/{entityId:N}/select-text?top={top}", CancellationToken.None);
-        if (!res.IsSuccessStatusCode) return null;
-        return await res.Content.ReadAsStringAsync(CancellationToken.None);
+        return await Catalog.GetEntitySelectTextAsync(entityId, top, CancellationToken.None);
     }
 }

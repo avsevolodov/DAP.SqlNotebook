@@ -99,7 +99,7 @@ public sealed class NodeQueryExecutorService : INodeQueryExecutorService
             return new NotebookCellExecutionResultInfo
             {
                 Status = NotebookCellExecutionStatusInfo.Failed,
-                Error = $"Query timed out after {timeoutSeconds} seconds.",
+                Error = "Query was cancelled.",
             };
         }
         catch (Exception ex)

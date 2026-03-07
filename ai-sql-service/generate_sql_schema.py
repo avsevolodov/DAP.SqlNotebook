@@ -4,11 +4,16 @@ then include those tables, their descriptions, relations, and related table desc
 """
 from __future__ import annotations
 
-from typing import Optional
+import logging
+from typing import Optional, Union
 
-from schema_loader import get_schema_object, build_schema_markdown, build_schema_markdown_focused
+from rag_models import RagSchema
+from schema_loader import build_schema_markdown, build_schema_markdown_focused, get_schema_object
+from sql_parser import extract_sql_from_chat_history, extract_table_names_from_sql
+
 from rag_index import get_retriever
-from sql_parser import extract_table_names_from_sql, extract_sql_from_chat_history
+
+logger = logging.getLogger(__name__)
 
 
 def _entity_key(e: dict, key: str) -> str:
@@ -16,8 +21,16 @@ def _entity_key(e: dict, key: str) -> str:
     return (v or "").strip()
 
 
-def _entity_names_in_schema(schema: dict) -> set[str]:
+def _entity_names_in_schema(schema: Union[RagSchema, dict]) -> set[str]:
     """All entity names (name + displayName) present in schema."""
+    if isinstance(schema, RagSchema):
+        out = set()
+        for e in schema.entities:
+            if e.name:
+                out.add(e.name)
+            if e.display_name:
+                out.add(e.display_name)
+        return out
     out = set()
     for e in schema.get("entities") or schema.get("Entities") or []:
         name = _entity_key(e, "name")
@@ -58,7 +71,7 @@ def build_focused_schema_for_generate_sql(
     Returns markdown string for the LLM prompt.
     """
     schema_obj = get_schema_object(catalog_node_id=catalog_node_id)
-    schema_entities = schema_obj.get("entities") or schema_obj.get("Entities") or []
+    schema_entities = schema_obj.entities
     if not schema_entities:
         return build_schema_markdown(schema_obj)
 
@@ -96,9 +109,9 @@ def build_focused_schema_for_generate_sql(
                 if norm:
                     focus_names.add(norm)
     except Exception as ex:
-        print("RAG focus for generate_sql:", ex)
+        logger.debug("RAG focus for generate_sql: %s", ex)
 
     if focus_names:
-        print("=== generate_sql focused tables ===", sorted(focus_names))
+        logger.debug("generate_sql focused tables: %s", sorted(focus_names))
         return build_schema_markdown_focused(schema_obj, focus_names)
     return build_schema_markdown(schema_obj)

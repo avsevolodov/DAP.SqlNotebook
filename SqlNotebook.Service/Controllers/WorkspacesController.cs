@@ -18,20 +18,68 @@ namespace DAP.SqlNotebook.Service.Controllers;
 public class WorkspacesController : ControllerBase
 {
     private readonly IWorkspaceRepository _workspaceRepository;
+    private readonly IWorkspaceFavoritesRepository _favoritesRepository;
     private readonly IMapper _mapper;
 
-    public WorkspacesController(IWorkspaceRepository workspaceRepository, IMapper mapper)
+    public WorkspacesController(
+        IWorkspaceRepository workspaceRepository,
+        IWorkspaceFavoritesRepository favoritesRepository,
+        IMapper mapper)
     {
         _workspaceRepository = workspaceRepository ?? throw new ArgumentNullException(nameof(workspaceRepository));
+        _favoritesRepository = favoritesRepository ?? throw new ArgumentNullException(nameof(favoritesRepository));
         _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
     }
 
-    /// <summary>List workspaces for the current user (owner).</summary>
+    /// <summary>List workspaces/folders for the current user (owner). Used by "My workspaces" page.</summary>
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<WorkspaceInfo>>> GetList(CancellationToken ct)
     {
         var login = User.Identity?.Name;
         var entities = await _workspaceRepository.GetByOwnerAsync(login, ct).ConfigureAwait(false);
+        var list = entities.Select(e => _mapper.Map<WorkspaceInfo>(e)).ToList();
+        return Ok(list);
+    }
+
+    /// <summary>Current user's favorite workspace IDs.</summary>
+    [HttpGet("favorites")]
+    public async Task<ActionResult<IReadOnlyList<Guid>>> GetFavorites(CancellationToken ct)
+    {
+        var login = User.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(login))
+            return Ok(Array.Empty<Guid>());
+        var ids = await _favoritesRepository.GetByUserAsync(login, ct).ConfigureAwait(false);
+        return Ok(ids);
+    }
+
+    [HttpPost("favorites/{workspaceId:guid}")]
+    public async Task<ActionResult> AddFavorite(Guid workspaceId, CancellationToken ct)
+    {
+        var login = User.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(login))
+            return Unauthorized();
+        var workspace = await _workspaceRepository.GetByIdAsync(workspaceId, ct).ConfigureAwait(false);
+        if (workspace == null)
+            return NotFound();
+        await _favoritesRepository.AddAsync(login, workspaceId, ct).ConfigureAwait(false);
+        return NoContent();
+    }
+
+    [HttpDelete("favorites/{workspaceId:guid}")]
+    public async Task<ActionResult> RemoveFavorite(Guid workspaceId, CancellationToken ct)
+    {
+        var login = User.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(login))
+            return Unauthorized();
+        await _favoritesRepository.RemoveAsync(login, workspaceId, ct).ConfigureAwait(false);
+        return NoContent();
+    }
+
+    /// <summary>All workspace/folder nodes for the common tree (hierarchy with folders).</summary>
+    [HttpGet("tree")]
+    public async Task<ActionResult<IReadOnlyList<WorkspaceInfo>>> GetTree(CancellationToken ct)
+    {
+        var entities = await _workspaceRepository.GetTreeAsync(ct).ConfigureAwait(false);
         var list = entities.Select(e => _mapper.Map<WorkspaceInfo>(e)).ToList();
         return Ok(list);
     }
@@ -57,6 +105,8 @@ public class WorkspacesController : ControllerBase
             Name = (model?.Name ?? string.Empty).Trim(),
             Description = string.IsNullOrWhiteSpace(model?.Description) ? null : model.Description.Trim(),
             OwnerLogin = login,
+            ParentId = model?.ParentId,
+            IsFolder = model?.IsFolder ?? false,
         };
         if (string.IsNullOrWhiteSpace(entity.Name))
             return BadRequest("Name is required.");
@@ -77,6 +127,8 @@ public class WorkspacesController : ControllerBase
             return Forbid();
         existing.Name = (model.Name ?? string.Empty).Trim();
         existing.Description = string.IsNullOrWhiteSpace(model.Description) ? null : model.Description.Trim();
+        existing.ParentId = model.ParentId;
+        existing.IsFolder = model.IsFolder;
         await _workspaceRepository.UpdateAsync(existing, ct).ConfigureAwait(false);
         return Ok(_mapper.Map<WorkspaceInfo>(existing));
     }

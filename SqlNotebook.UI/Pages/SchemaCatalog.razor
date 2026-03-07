@@ -1,6 +1,8 @@
-@using System.Net.Http.Json
+@using System.Threading
 @using DAP.SqlNotebook.Contract.Entities
+@using DAP.SqlNotebook.Service.Client.V1
 @using DAP.SqlNotebook.UI.Components
+@using DAP.SqlNotebook.UI.Helpers
 @using global::MudBlazor
 @using Microsoft.AspNetCore.Components.Web
 @using MudBlazor
@@ -13,9 +15,9 @@
     <MudStack Spacing="3">
         <MudText Typo="Typo.h6">Schema catalog</MudText>
         <MudStack Row Spacing="2">
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog">Add source</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="@MainRoutes.GetSourceNewRoute()">Add source</MudButton>
             <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadSources">Refresh</MudButton>
-            <MudButton Variant="Variant.Outlined" Href="@("/schema-catalog/entities")">Entities &amp; fields</MudButton>
+            <MudButton Variant="Variant.Outlined" Href="@MainRoutes.SchemaCatalogEntities">Entities &amp; fields</MudButton>
         </MudStack>
 
         @if (_loading)
@@ -80,7 +82,7 @@
                                     <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" OnClick="@(() => CheckStatus(item))" />
                                 </MudTooltip>
                             </td>
-                            <td>@item.Name</td>
+                            <td><MudLink Href="@MainRoutes.GetSourceViewRoute(item.Id)" Style="font-weight: 500;">@item.Name</MudLink></td>
                             <td>@(item.Owner ?? "—")</td>
                             <td>@(item.Provider ?? "—")</td>
                             <td>@(item.DatabaseName ?? "—")</td>
@@ -102,7 +104,7 @@
                                 <MudTooltip Text="Import DB structure">
                                     <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" OnClick="@(() => ImportStructure(item))" />
                                 </MudTooltip>
-                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialog(item))" title="Edit" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Href="@MainRoutes.GetSourceEditRoute(item.Id)" title="Edit" />
                                 <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => ConfirmDelete(item))" title="Delete" />
                             </td>
                         </tr>
@@ -116,50 +118,6 @@
         }
     </MudStack>
 </MudPaper>
-
-<MudDialog @bind-Visible="_showEditDialog" Options="@(new DialogOptions { CloseOnEscapeKey = true })">
-    <TitleContent>
-        <MudText Typo="Typo.h6">@(_editingId.HasValue ? "Edit source" : "New source")</MudText>
-    </TitleContent>
-    <DialogContent>
-        <MudStack Spacing="2" @onkeydown="OnEditDialogKeyDown">
-            <MudTextField @bind-Value="_editName" Label="Name" Variant="Variant.Outlined" Required />
-            <MudTextField @bind-Value="_editOwner" Label="Owner" Variant="Variant.Outlined" />
-            <MudSelect T="string?" @bind-Value="_editProvider" Label="Provider" Variant="Variant.Outlined">
-                <MudSelectItem T="string?" Value="@("MSSQL")">MSSQL</MudSelectItem>
-                <MudSelectItem T="string?" Value="@("ClickHouse")">ClickHouse</MudSelectItem>
-                <MudSelectItem T="string?" Value="@("Kafka")">Kafka</MudSelectItem>
-            </MudSelect>
-            <MudTextField @bind-Value="_editConnectionInfo" Label="@(_editProvider == "Kafka" ? "Bootstrap servers (host:port)" : "Connection (server or connection string)")" Variant="Variant.Outlined" Lines="2" />
-            <MudTextField @bind-Value="_editDatabaseName" Label="Database name" Variant="Variant.Outlined" Placeholder="e.g. master, MyDb" />
-            <MudSelect T="string?" @bind-Value="_editAuthType" Label="Authentication" Variant="Variant.Outlined">
-                <MudSelectItem T="string?" Value="@("Kerberos")">Kerberos (Windows)</MudSelectItem>
-                <MudSelectItem T="string?" Value="@("Basic")">Basic (login / password)</MudSelectItem>
-            </MudSelect>
-            @if (string.Equals(_editAuthType, "Basic", StringComparison.OrdinalIgnoreCase))
-            {
-                <MudTextField @bind-Value="_editLogin" Label="Login" Variant="Variant.Outlined" />
-                <MudTextField @bind-Value="_editPassword" Label="Password" Variant="Variant.Outlined" InputType="InputType.Password" Placeholder="@(_editingId.HasValue ? "Leave empty to keep current" : "")" />
-            }
-            @if (string.Equals(_editProvider, "Kafka", StringComparison.OrdinalIgnoreCase))
-            {
-                <MudTextField @bind-Value="_editKafkaConsumerGroupPrefix"
-                              Label="Consumer group prefix"
-                              Variant="Variant.Outlined"
-                              Placeholder="e.g. sqlnotebook-peek"
-                              HelperText="Used as groupId when Auto-generate is off; otherwise GUID is appended each request." />
-                <MudCheckBox T="bool" @bind-Checked="_editKafkaConsumerGroupAutoGenerate"
-                             Label="Auto-generate (append GUID each time)"
-                             Color="Color.Primary" />
-            }
-            <MudTextField @bind-Value="_editDescription" Label="Description" Variant="Variant.Outlined" Lines="2" />
-        </MudStack>
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="CloseEditDialog">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveSource" Disabled="@string.IsNullOrWhiteSpace(_editName)">Save</MudButton>
-    </DialogActions>
-</MudDialog>
 
 <MudDialog @bind-Visible="_showDeleteConfirm" Options="@(new DialogOptions { CloseOnEscapeKey = true })">
     <TitleContent>
@@ -175,27 +133,14 @@
 </MudDialog>
 
 @code {
-    [Inject] private HttpClient Http { get; set; } = null!;
+    [Inject] private ICatalogManager Catalog { get; set; } = null!;
     [Inject] private ISnackbar Snackbar { get; set; } = null!;
     [Inject] private ICatalogRefreshService CatalogRefresh { get; set; } = null!;
 
     private List<CatalogNodeInfo> _sources = new();
     private Dictionary<Guid, ConnectionHealthInfo> _statusMap = new();
     private bool _loading = true;
-    private bool _showEditDialog;
     private bool _showDeleteConfirm;
-    private Guid? _editingId;
-    private string _editName = "";
-    private string? _editOwner;
-    private string? _editProvider = "MSSQL";
-    private string? _editConnectionInfo;
-    private string? _editDatabaseName;
-    private string? _editAuthType = "Kerberos";
-    private string? _editLogin;
-    private string? _editPassword;
-    private string? _editDescription;
-    private string _editKafkaConsumerGroupPrefix = "sqlnotebook-peek";
-    private bool _editKafkaConsumerGroupAutoGenerate = false;
     private Guid? _deleteId;
     private string _deleteName = "";
     private HashSet<Guid> _checkingIds = new();
@@ -213,8 +158,8 @@
         _loading = true;
         try
         {
-            var nodes = await Http.GetFromJsonAsync<List<CatalogNodeInfo>>("api/v1/catalog/databases");
-            _sources = nodes ?? new List<CatalogNodeInfo>();
+            var nodes = await Catalog.GetDatabasesAsync(CancellationToken.None);
+            _sources = nodes?.ToList() ?? new List<CatalogNodeInfo>();
             _statusMap = new Dictionary<Guid, ConnectionHealthInfo>();
         }
         finally
@@ -233,122 +178,27 @@
         await InvokeAsync(StateHasChanged);
         foreach (var s in _sources)
         {
+            ConnectionHealthInfo? status = null;
             try
             {
-                var status = await Http.GetFromJsonAsync<ConnectionHealthInfo>($"api/v1/catalog/nodes/{s.Id:N}/connection-status");
-                await InvokeAsync(() =>
-                {
-                    _loadingStatusIds.Remove(s.Id);
-                    if (status != null)
-                        _statusMap[s.Id] = status;
-                    StateHasChanged();
-                });
+                status = await Catalog.GetConnectionStatusAsync(s.Id, CancellationToken.None);
             }
-            catch
+            catch (Exception ex)
             {
-                await InvokeAsync(() =>
+                status = new ConnectionHealthInfo
                 {
-                    _loadingStatusIds.Remove(s.Id);
-                    StateHasChanged();
-                });
-            }
-        }
-    }
-
-    private void OpenAddDialog()
-    {
-        _editingId = null;
-        _editName = "";
-        _editOwner = null;
-        _editProvider = "MSSQL";
-        _editConnectionInfo = null;
-        _editDatabaseName = null;
-        _editAuthType = "Kerberos";
-        _editLogin = null;
-        _editPassword = null;
-        _editDescription = null;
-        _editKafkaConsumerGroupPrefix = "sqlnotebook-peek";
-        _editKafkaConsumerGroupAutoGenerate = false;
-        _showEditDialog = true;
-    }
-
-    private void OpenEditDialog(CatalogNodeInfo item)
-    {
-        _editingId = item.Id;
-        _editName = item.Name;
-        _editOwner = item.Owner;
-        _editProvider = item.Provider ?? "MSSQL";
-        _editConnectionInfo = item.ConnectionInfo;
-        _editDatabaseName = item.DatabaseName;
-        _editAuthType = item.AuthType ?? "Kerberos";
-        _editLogin = item.Login;
-        _editPassword = null; // never show stored password
-        _editDescription = item.Description;
-        _editKafkaConsumerGroupPrefix = string.IsNullOrWhiteSpace(item.ConsumerGroupPrefix) ? "sqlnotebook-peek" : item.ConsumerGroupPrefix!;
-        _editKafkaConsumerGroupAutoGenerate = item.ConsumerGroupAutoGenerate;
-        _showEditDialog = true;
-    }
-
-    private void CloseEditDialog()
-    {
-        _showEditDialog = false;
-    }
-
-    private async Task OnEditDialogKeyDown(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_editName))
-            await SaveSource();
-    }
-
-    private async Task SaveSource()
-    {
-        if (string.IsNullOrWhiteSpace(_editName)) return;
-        try
-        {
-            if (_editingId.HasValue)
-            {
-                var update = new CatalogNodeUpdateInfo
-                {
-                    Name = _editName,
-                    Owner = _editOwner,
-                    Provider = _editProvider,
-                    ConnectionInfo = _editConnectionInfo,
-                    DatabaseName = _editDatabaseName,
-                    AuthType = _editAuthType,
-                    Login = _editLogin,
-                    Password = _editPassword,
-                    Description = _editDescription,
-                    ConsumerGroupPrefix = string.Equals(_editProvider, "Kafka", StringComparison.OrdinalIgnoreCase) ? _editKafkaConsumerGroupPrefix : null,
-                    ConsumerGroupAutoGenerate = string.Equals(_editProvider, "Kafka", StringComparison.OrdinalIgnoreCase) ? _editKafkaConsumerGroupAutoGenerate : null,
+                    Status = ConnectionStatusInfo.Failed,
+                    Message = ex.Message,
                 };
-                var res = await Http.PutAsJsonAsync($"api/v1/catalog/nodes/{_editingId.Value:N}", update);
-                if (!res.IsSuccessStatusCode) return;
             }
-            else
+            await InvokeAsync(() =>
             {
-                var create = new CatalogNodeCreateInfo
-                {
-                    ParentId = null,
-                    Type = 1,
-                    Name = _editName,
-                    Owner = _editOwner,
-                    Provider = _editProvider,
-                    ConnectionInfo = _editConnectionInfo,
-                    DatabaseName = _editDatabaseName,
-                    AuthType = _editAuthType,
-                    Login = _editLogin,
-                    Password = _editPassword,
-                    Description = _editDescription,
-                    ConsumerGroupPrefix = string.Equals(_editProvider, "Kafka", StringComparison.OrdinalIgnoreCase) ? _editKafkaConsumerGroupPrefix : null,
-                    ConsumerGroupAutoGenerate = string.Equals(_editProvider, "Kafka", StringComparison.OrdinalIgnoreCase) && _editKafkaConsumerGroupAutoGenerate,
-                };
-                await Http.PostAsJsonAsync("api/v1/catalog/nodes", create);
-            }
-            CloseEditDialog();
-            await LoadSources();
-            CatalogRefresh.NotifyRefresh();
+                _loadingStatusIds.Remove(s.Id);
+                if (status != null)
+                    _statusMap[s.Id] = status;
+                StateHasChanged();
+            });
         }
-        catch { /* todo: snackbar */ }
     }
 
     private async Task CheckStatus(CatalogNodeInfo item)
@@ -360,13 +210,17 @@
             StateHasChanged();
             try
             {
-                var status = await Http.GetFromJsonAsync<ConnectionHealthInfo>($"api/v1/catalog/nodes/{item.Id:N}/connection-status");
-                if (status != null)
-                {
-                    _statusMap[item.Id] = status;
-                }
+                var status = await Catalog.GetConnectionStatusAsync(item.Id, CancellationToken.None);
+                _statusMap[item.Id] = status;
             }
-            catch { /* ignore */ }
+            catch (Exception ex)
+            {
+                _statusMap[item.Id] = new ConnectionHealthInfo
+                {
+                    Status = ConnectionStatusInfo.Failed,
+                    Message = ex.Message,
+                };
+            }
         }
         finally
         {
@@ -394,18 +248,11 @@
         if (!_deleteId.HasValue) return;
         try
         {
-            var res = await Http.DeleteAsync($"api/v1/catalog/nodes/{_deleteId.Value:N}");
-            if (res.IsSuccessStatusCode)
-            {
-                CloseDeleteConfirm();
-                await LoadSources();
-                Snackbar.Add("Source deleted.", Severity.Success);
-                CatalogRefresh.NotifyRefresh();
-            }
-            else
-            {
-                Snackbar.Add("Delete failed. The source may have child nodes or the server returned an error.", Severity.Error);
-            }
+            await Catalog.DeleteNodeAsync(_deleteId.Value, CancellationToken.None);
+            CloseDeleteConfirm();
+            await LoadSources();
+            Snackbar.Add("Source deleted.", Severity.Success);
+            CatalogRefresh.NotifyRefresh();
         }
         catch (Exception ex)
         {
@@ -417,21 +264,9 @@
     {
         try
         {
-            var res = await Http.PostAsync($"api/v1/catalog/nodes/{item.Id:N}/import-structure", null);
-            if (res.IsSuccessStatusCode)
-            {
-                var result = await res.Content.ReadFromJsonAsync<SchemaImportResultInfo>();
-                if (result != null)
-                {
-                    Snackbar.Add($"Imported {result.TablesCount} tables, {result.FieldsCount} columns.", Severity.Success);
-                    await LoadSources();
-                }
-            }
-            else
-            {
-                var result = await res.Content.ReadFromJsonAsync<SchemaImportResultInfo>();
-                Snackbar.Add(result?.Error ?? "Import failed.", Severity.Error);
-            }
+            var result = await Catalog.ImportStructureAsync(item.Id, CancellationToken.None);
+            Snackbar.Add($"Imported {result.TablesCount} tables, {result.FieldsCount} columns.", Severity.Success);
+            await LoadSources();
         }
         catch (Exception ex)
         {
@@ -480,12 +315,9 @@
                 ConsumerGroupPrefix = item.ConsumerGroupPrefix,
                 ConsumerGroupAutoGenerate = item.ConsumerGroupAutoGenerate,
             };
-            var res = await Http.PutAsJsonAsync($"api/v1/catalog/nodes/{item.Id:N}", update);
-            if (res.IsSuccessStatusCode)
-            {
-                item.Description = _editDescriptionValue;
-                Snackbar.Add("Description saved.", Severity.Success);
-            }
+            await Catalog.UpdateNodeAsync(item.Id, update, CancellationToken.None);
+            item.Description = _editDescriptionValue;
+            Snackbar.Add("Description saved.", Severity.Success);
         }
         catch { Snackbar.Add("Failed to save description.", Severity.Error); }
         finally
