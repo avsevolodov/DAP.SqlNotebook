@@ -51,6 +51,28 @@
     </MudStack>
 </MudPaper>
 
+<MudDialog @bind-Visible="_showDiscardDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Несохранённые изменения</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body1">
+            У вас есть несохранённые изменения диаграммы. Сохранить перед выходом?
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => ConfirmDiscardAsync(true))">
+            Сохранить
+        </MudButton>
+        <MudButton Color="Color.Default" Variant="Variant.Text" OnClick="@(() => ConfirmDiscardAsync(false))">
+            Не сохранять
+        </MudButton>
+        <MudButton Color="Color.Secondary" Variant="Variant.Text" OnClick="CancelDiscard">
+            Отмена
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
 @code {
     [Parameter, EditorRequired] public NotebookCellInfo Cell { get; set; } = null!;
     [Parameter] public EventCallback<NotebookCellInfo> OnDeleteCell { get; set; }
@@ -65,6 +87,8 @@
     private string? _lastSentContent;
     private bool _isFullscreen;
     private bool _isDirty;
+    private bool _showDiscardDialog;
+    private bool _pendingFullscreenExit;
 
     protected override void OnInitialized()
     {
@@ -114,13 +138,27 @@
 
     private void ToggleFullscreen()
     {
+        if (_isFullscreen && _isDirty)
+        {
+            _pendingFullscreenExit = true;
+            _showDiscardDialog = true;
+            return;
+        }
         _isFullscreen = !_isFullscreen;
     }
 
     [JSInvokable]
     public Task OnExcalidrawEscape()
     {
-        _isFullscreen = false;
+        if (_isFullscreen && _isDirty)
+        {
+            _pendingFullscreenExit = true;
+            _showDiscardDialog = true;
+        }
+        else
+        {
+            _isFullscreen = false;
+        }
         return InvokeAsync(StateHasChanged);
     }
 
@@ -134,6 +172,28 @@
         if (OnExcalidrawContentChanged.HasDelegate)
             await OnExcalidrawContentChanged.InvokeAsync((Cell.Id, content));
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ConfirmDiscardAsync(bool save)
+    {
+        if (save)
+        {
+            await SaveCell();
+        }
+        _isDirty = false;
+        _showDiscardDialog = false;
+        if (_pendingFullscreenExit)
+        {
+            _pendingFullscreenExit = false;
+            _isFullscreen = false;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void CancelDiscard()
+    {
+        _pendingFullscreenExit = false;
+        _showDiscardDialog = false;
     }
 
     private async Task SaveCell()

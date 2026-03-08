@@ -104,6 +104,7 @@
     private NotebookInfo? _notebook;
     private string? _sqlEditorContent;
     private string? _executionError;
+    private string? _excalidrawEditorContent;
     private NotebookCellExecutionResultInfo? _currentRunResult;
     private int? _queryTimeoutSeconds = 30;
     private int _selectTopCount = 10;
@@ -256,6 +257,12 @@
         return Task.CompletedTask;
     }
     private Task OnExecutionErrorChanged(string? value) { _executionError = value; return Task.CompletedTask; }
+
+    private Task OnExcalidrawEditorContentChanged(string? value)
+    {
+        _excalidrawEditorContent = value;
+        return Task.CompletedTask;
+    }
 
     private void CancelRun()
     {

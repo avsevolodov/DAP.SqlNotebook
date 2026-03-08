@@ -51,17 +51,32 @@
     <MudPaper Class="pa-3" Elevation="1" Outlined="true">
         <MudStack Spacing="2">
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap">
-                @if (IsQueryRunning)
+                <MudButton Variant="@(_activeEditor == EditorMode.Sql ? Variant.Filled : Variant.Outlined)"
+                           Color="Color.Primary"
+                           OnClick="@(() => SetEditorMode(EditorMode.Sql))"
+                           StartIcon="@Icons.Material.Filled.Code">
+                    SQL
+                </MudButton>
+                <MudButton Variant="@(_activeEditor == EditorMode.Excalidraw ? Variant.Filled : Variant.Outlined)"
+                           Color="Color.Primary"
+                           OnClick="@(() => SetEditorMode(EditorMode.Excalidraw))"
+                           StartIcon="@Icons.Material.Filled.Gesture">
+                    Diagram
+                </MudButton>
+                @if (_activeEditor == EditorMode.Sql)
                 {
-                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Style="width:24px; height:24px;" />
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">Running…</MudText>
-                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="HandleCancelRun" StartIcon="@Icons.Material.Filled.Stop">Cancel</MudButton>
-                }
-                else
-                {
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleRun" StartIcon="@Icons.Material.Filled.PlayArrow">Run</MudButton>
-                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="HandleRunAsChart" StartIcon="@Icons.Material.Filled.BarChart">Run as chart</MudButton>
-                    <MudButton Variant="Variant.Outlined" OnClick="HandleFormatSql" StartIcon="@Icons.Material.Filled.FormatAlignLeft" Title="Format SQL">Format SQL</MudButton>
+                    @if (IsQueryRunning)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Style="width:24px; height:24px;" />
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Running…</MudText>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="HandleCancelRun" StartIcon="@Icons.Material.Filled.Stop">Cancel</MudButton>
+                    }
+                    else
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleRun" StartIcon="@Icons.Material.Filled.PlayArrow">Run</MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="HandleRunAsChart" StartIcon="@Icons.Material.Filled.BarChart">Run as chart</MudButton>
+                        <MudButton Variant="Variant.Outlined" OnClick="HandleFormatSql" StartIcon="@Icons.Material.Filled.FormatAlignLeft" Title="Format SQL">Format SQL</MudButton>
+                    }
                 }
                 <MudMenu Open="_settingsOpen" OpenChanged="e => _settingsOpen = e" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
                     <ActivatorContent>
@@ -87,26 +102,46 @@
                     @(ExecutionError)
                 </MudAlert>
             }
-            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">Новая ячейка — редактор запроса</MudText>
-            <div id="@_editorElementId" class="sql-notebook-editor-container"></div>
-            <MudMenu Open="_addCellMenuOpen" OpenChanged="e => _addCellMenuOpen = e" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
-                <ActivatorContent>
-                    <MudButton Variant="@(CurrentRunResult != null ? Variant.Filled : Variant.Outlined)" Color="@(CurrentRunResult != null ? Color.Primary : Color.Default)" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _addCellMenuOpen = true)" Class="mt-2">
-                        @(CurrentRunResult != null ? "Добавить ячейку (сохранить результат)" : "Добавить ячейку")
-                    </MudButton>
-                </ActivatorContent>
-                <ChildContent>
-                    <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Sql))" Icon="@Icons.Material.Filled.Code">SQL</MudMenuItem>
-                    <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Markdown))" Icon="@Icons.Material.Filled.TextFields">Markdown</MudMenuItem>
-                    <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Chart))" Icon="@Icons.Material.Filled.BarChart">Chart</MudMenuItem>
-                    <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Excalidraw))" Icon="@Icons.Material.Filled.Gesture">Excalidraw</MudMenuItem>
-                </ChildContent>
-            </MudMenu>
-            @if (CurrentRunResult != null)
+            @if (_activeEditor == EditorMode.Sql)
             {
-                <div class="notebook-current-result mt-3">
-                    <NotebookQueryResult Result="@CurrentRunResult" MaxHeight="300" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">Новая ячейка — редактор запроса</MudText>
+                <div id="@_editorElementId" class="sql-notebook-editor-container"></div>
+                <MudMenu Open="_addCellMenuOpen" OpenChanged="e => _addCellMenuOpen = e" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
+                    <ActivatorContent>
+                        <MudButton Variant="@(CurrentRunResult != null ? Variant.Filled : Variant.Outlined)" Color="@(CurrentRunResult != null ? Color.Primary : Color.Default)" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _addCellMenuOpen = true)" Class="mt-2">
+                            @(CurrentRunResult != null ? "Добавить ячейку (сохранить результат)" : "Добавить ячейку")
+                        </MudButton>
+                    </ActivatorContent>
+                    <ChildContent>
+                        <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Sql))" Icon="@Icons.Material.Filled.Code">SQL</MudMenuItem>
+                        <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Markdown))" Icon="@Icons.Material.Filled.TextFields">Markdown</MudMenuItem>
+                        <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Chart))" Icon="@Icons.Material.Filled.BarChart">Chart</MudMenuItem>
+                    </ChildContent>
+                </MudMenu>
+                @if (CurrentRunResult != null)
+                {
+                    <div class="notebook-current-result mt-3">
+                        <NotebookQueryResult Result="@CurrentRunResult" MaxHeight="300" />
+                    </div>
+                }
+            }
+            else if (_activeEditor == EditorMode.Excalidraw)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">Новая ячейка — Excalidraw</MudText>
+                <div class="notebook-excalidraw-wrap" style="height: 400px; min-height: 300px;">
+                    <iframe id="@_excalidrawEditorIframeId"
+                            src="excalidraw/embed.html"
+                            title="Excalidraw editor"
+                            style="width: 100%; height: 100%; border: 1px solid var(--mud-palette-lines-default); border-radius: 4px; pointer-events: auto;"
+                            @onload="HandleExcalidrawEditorLoad" />
                 </div>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Excalidraw))"
+                           Class="mt-2">
+                    Добавить ячейку (Excalidraw)
+                </MudButton>
             }
         </MudStack>
     </MudPaper>
@@ -156,6 +191,9 @@
     private string _editorTheme = "vs-dark";
     private int _lastCellCount = -1;
     private MudMarkdownProps? _cachedMarkdownProps;
+    private enum EditorMode { Sql, Excalidraw }
+    private EditorMode _activeEditor = EditorMode.Sql;
+    private string _excalidrawEditorIframeId = "excalidraw-editor";
 
     protected override void OnParametersSet()
     {
@@ -250,10 +288,30 @@
         await HandleRun();
     }
 
+    [JSInvokable]
+    public async Task OnExcalidrawEditorChange(string content)
+    {
+        // В текущей версии храним содержимое редактора только на стороне Notebook (через SqlEditorContent / AddCell),
+        // поэтому здесь достаточно обновить локальное состояние, если понадобится.
+        await Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public async Task OnExcalidrawEditorReady()
+    {
+        // При необходимости можно отправить в редактор ранее сохранённое состояние.
+        await Task.CompletedTask;
+    }
+
     private async Task HandleRun()
     {
         await FlushEditorContent();
         await OnRun.InvokeAsync();
+    }
+
+    private void SetEditorMode(EditorMode mode)
+    {
+        _activeEditor = mode;
     }
 
     private async Task HandleRunAsChart()
@@ -380,6 +438,18 @@
     {
         if (OnRunSqlFromMarkdown.HasDelegate)
             await OnRunSqlFromMarkdown.InvokeAsync(sql?.Trim() ?? "");
+    }
+
+    private async Task HandleExcalidrawEditorLoad()
+    {
+        try
+        {
+            if (_dotNetRef != null)
+            {
+                await JS.InvokeVoidAsync("sqlNotebookExcalidraw.listenForChanges", _excalidrawEditorIframeId, _dotNetRef, "OnExcalidrawEditorChange", "OnExcalidrawEditorReady");
+            }
+        }
+        catch { }
     }
 
     private MudMarkdownProps GetMarkdownProps()
