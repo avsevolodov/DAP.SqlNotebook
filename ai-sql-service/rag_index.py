@@ -101,53 +101,100 @@ def _fetch_indexing_data_via_endpoints() -> tuple[list[RagCatalogNode], list[Rag
     Returns (db_nodes, entities_with_fields_and_relations, relations_flat) as Pydantic models.
     Fallback: if GET catalog/tables returns empty, load entities from GET /api/v1/schema.
     """
-    from schema_client import get_databases, get_tables, get_entity_fields, get_entity_relations
+    from schema_client import (
+        get_databases,
+        get_entities_for_database,
+        get_entity_fields,
+        get_entity_relations,
+        get_entity_select_text,
+        get_tables,
+    )
 
     raw_db = get_databases()
     db_nodes = [RagCatalogNode.model_validate(n) for n in raw_db]
 
-    raw_tables = get_tables()
-
-    # Fallback: catalog/tables can be empty. Try full schema from /api/v1/schema.
-    if not raw_tables:
-        try:
-            from schema_loader import get_schema_object
-
-            schema = get_schema_object(force_refresh=True)
-            if schema.entities:
-                entities_with_fields = list(schema.entities)
-                relations_flat = list(schema.relations)
-                logger.info(
-                    "RAG index: using schema from GET /api/v1/schema (catalog/tables empty), entities=%d",
-                    len(entities_with_fields),
-                )
-                return db_nodes, entities_with_fields, relations_flat
-        except Exception as ex:
-            logger.warning("RAG fallback schema fetch failed: %s", ex)
-
     entities_with_fields: list[RagEntity] = []
     relations_flat: list[RagRelation] = []
-    for t in raw_tables:
-        eid = t.get("id") or t.get("Id")
-        if not eid:
+
+    # Primary path: iterate databases -> entities -> fields/relations/select-text
+    for raw_node in raw_db:
+        try:
+            node = RagCatalogNode.model_validate(raw_node)
+        except Exception:
             continue
-        eid_str = str(eid).strip()
-        raw_fields = t.get("fields") or t.get("Fields")
-        if raw_fields is None:
-            raw_fields = get_entity_fields(eid_str)
-        raw_relations = get_entity_relations(eid_str)
-        fields = [RagField.model_validate(f) for f in raw_fields] if raw_fields else []
-        rels = [RagRelation.model_validate(r) for r in raw_relations] if raw_relations else []
-        ent = RagEntity(
-            id=eid_str,
-            name=str(t.get("name") or t.get("Name") or "").strip(),
-            display_name=str(t.get("displayName") or t.get("DisplayName") or "").strip(),
-            description=str(t.get("description") or t.get("Description") or "").strip(),
-            fields=fields,
-            relations=rels,
+        db_id = (node.id or "").strip()
+        if not db_id:
+            continue
+        # Prefer explicit DatabaseName from contract; fall back to node.Name.
+        db_name = (
+            str(raw_node.get("databaseName") or raw_node.get("DatabaseName") or node.name or "")
+            .strip()
         )
-        entities_with_fields.append(ent)
-        relations_flat.extend(rels)
+        entities = get_entities_for_database(db_id)
+        for e in entities:
+            eid_str = (e.id or "").strip()
+            if not eid_str:
+                continue
+            raw_fields = get_entity_fields(eid_str)
+            raw_relations = get_entity_relations(eid_str)
+            fields = [RagField.model_validate(f) for f in raw_fields] if raw_fields else []
+            rels = [RagRelation.model_validate(r) for r in raw_relations] if raw_relations else []
+            sample_sql = (get_entity_select_text(eid_str, top=10) or "").strip()
+            ent = RagEntity(
+                id=eid_str,
+                name=(e.name or "").strip(),
+                display_name=(e.display_name or "").strip(),
+                description=(e.description or "").strip(),
+                schema_name=(e.schema_name or "").strip(),
+                database_name=db_name,
+                sample_sql=sample_sql,
+                fields=fields,
+                relations=rels,
+            )
+            entities_with_fields.append(ent)
+            relations_flat.extend(rels)
+
+    # Fallback: if we didn't get any entities via catalog/entities, use legacy catalog/tables/schema.
+    if not entities_with_fields:
+        raw_tables = get_tables()
+        if not raw_tables:
+            try:
+                from schema_loader import get_schema_object
+
+                schema = get_schema_object(force_refresh=True)
+                if schema.entities:
+                    entities_with_fields = list(schema.entities)
+                    relations_flat = list(schema.relations)
+                    logger.info(
+                        "RAG index: using schema from GET /api/v1/schema (catalog/tables empty), entities=%d",
+                        len(entities_with_fields),
+                    )
+                    return db_nodes, entities_with_fields, relations_flat
+            except Exception as ex:
+                logger.warning("RAG fallback schema fetch failed: %s", ex)
+
+        for t in raw_tables:
+            eid = t.get("id") or t.get("Id")
+            if not eid:
+                continue
+            eid_str = str(eid).strip()
+            raw_fields = t.get("fields") or t.get("Fields")
+            if raw_fields is None:
+                raw_fields = get_entity_fields(eid_str)
+            raw_relations = get_entity_relations(eid_str)
+            fields = [RagField.model_validate(f) for f in raw_fields] if raw_fields else []
+            rels = [RagRelation.model_validate(r) for r in raw_relations] if raw_relations else []
+            ent = RagEntity(
+                id=eid_str,
+                name=str(t.get("name") or t.get("Name") or "").strip(),
+                display_name=str(t.get("displayName") or t.get("DisplayName") or "").strip(),
+                description=str(t.get("description") or t.get("Description") or "").strip(),
+                fields=fields,
+                relations=rels,
+            )
+            entities_with_fields.append(ent)
+            relations_flat.extend(rels)
+
     return db_nodes, entities_with_fields, relations_flat
 
 
@@ -174,20 +221,31 @@ def _build_documents_for_tables(
 
     docs: list[Document] = []
     for ent in entities:
-        name = ent.name
-        display = ent.display_name or name
-        desc = ent.description
+        name = (ent.name or "").strip()
+        display = (ent.display_name or name).strip()
+        desc = (ent.description or "").strip()
         ent_id = ent.id
 
-        field_parts = []
-        for f in ent.fields:
-            part = f"{f.name} {f.data_type}" + (" PK" if f.is_primary_key else "")
-            field_parts.append(part)
-        fields_text = "; ".join(field_parts) if field_parts else ""
+        # Database & schema from enriched RagEntity (fallback to global db_names when missing).
+        database = (ent.database_name or "").strip()
+        if not database and db_names:
+            database = ", ".join(str(x) for x in db_names[:3])
+        schema_name = (getattr(ent, "schema_name", "") or "").strip()
 
+        # Columns block.
+        column_lines: list[str] = []
+        for f in ent.fields:
+            col_name = (f.name or "").strip()
+            col_desc = (getattr(f, "description", "") or "").strip()
+            pk_flag = " (pk)" if f.is_primary_key else ""
+            dash_part = f" — {col_desc}" if col_desc else ""
+            column_lines.append(f"  {col_name}{pk_flag}{dash_part}")
+        columns_block = "\n".join(column_lines) if column_lines else ""
+
+        # Relations block (kept as additional context text).
         out_rels = rel_by_from.get(ent_id, [])
         in_rels = rel_by_to.get(ent_id, [])
-        rel_parts = []
+        rel_parts: list[str] = []
         for r in out_rels:
             to_name = ent_id_to_name.get(r.to_entity_id, r.to_entity_id)
             rel_parts.append(f"-> {to_name}({r.from_field_name} -> {r.to_field_name})")
@@ -196,13 +254,54 @@ def _build_documents_for_tables(
             rel_parts.append(f"<- {from_name}({r.from_field_name} -> {r.to_field_name})")
         rels_text = "; ".join(rel_parts) if rel_parts else ""
 
-        parts = [name, display, desc, "Fields: " + fields_text if fields_text else "", "Relations: " + rels_text if rels_text else ""]
-        page_content = " | ".join(str(p) for p in parts if p)
+        # Optional sample SQL representing table contents.
+        sample_sql = (getattr(ent, "sample_sql", "") or "").strip()
+
+        # Unified table-level document text.
+        lines: list[str] = []
+        if database:
+            lines.append(f"Database: {database}")
+        if schema_name:
+            lines.append(f"Schema: {schema_name}")
+        if name:
+            lines.append(f"Table: {name}")
+        # Type is not stored in schema yet; use generic fallback.
+        lines.append("Type: table")
+        if desc:
+            lines.append("Description:")
+            lines.append(f"  {desc}")
+        if columns_block:
+            lines.append("Columns:")
+            lines.append(columns_block)
+        if rels_text:
+            lines.append("Relations:")
+            lines.append(f"  {rels_text}")
+        if sample_sql:
+            lines.append("Sample SQL:")
+            lines.append(f"  {sample_sql}")
+        # Tags can be added later when available in Contract; keep structure ready but skip empty.
+
+        page_content = "\n".join(lines).strip()
         if not page_content:
             continue
-        meta = _safe_metadata({"name": name, "displayName": display, "description": desc})
-        if db_names:
-            meta["database"] = ", ".join(str(x) for x in db_names[:3])
+
+        # Log each table as it is processed for indexing.
+        logger.info(
+            "RAG indexing table: db=%s schema=%s table=%s",
+            database or "(unknown)",
+            schema_name or "(none)",
+            name or "(unnamed)",
+        )
+
+        meta = _safe_metadata(
+            {
+                "name": name,
+                "displayName": display,
+                "description": desc,
+                "database": database or "",
+                "schema": schema_name or "",
+            }
+        )
         docs.append(Document(page_content=page_content, metadata=meta))
     return docs
 
@@ -327,12 +426,20 @@ def get_retriever(
     get_schema_fn: Optional[Callable[..., dict]] = None,
     use_separate_endpoints: bool = False,
     k: int = 15,
+    metadata_filter: Optional[dict[str, Any]] = None,
 ):
-    """Return a retriever over the schema RAG index. Use use_separate_endpoints=True to build from separate API endpoints."""
+    """Return a retriever over the schema RAG index. Use use_separate_endpoints=True to build from separate API endpoints.
+
+    metadata_filter (when supported by vector store, e.g. Qdrant) is applied as a filter on document metadata,
+    allowing scoped search by database/schema/domain.
+    """
     vs = get_vector_store(schema=schema, get_schema_fn=get_schema_fn, use_separate_endpoints=use_separate_endpoints)
     if vs is None:
         return None
-    return vs.as_retriever(search_kwargs={"k": k})
+    search_kwargs: dict[str, Any] = {"k": k}
+    if metadata_filter:
+        search_kwargs["filter"] = metadata_filter
+    return vs.as_retriever(search_kwargs=search_kwargs)
 
 
 def run_background_reindex(use_separate_endpoints: bool = True) -> None:

@@ -69,6 +69,20 @@ class RagEntity(BaseModel):
     name: str = Field("", description="Logical name", validation_alias=AliasChoices("name", "Name"))
     display_name: str = Field("", validation_alias=AliasChoices("displayName", "DisplayName"))
     description: str = Field("", validation_alias=AliasChoices("description", "Description"))
+    schema_name: str = Field(
+        "",
+        description="Schema name (e.g. dbo)",
+        validation_alias=AliasChoices("schemaName", "SchemaName"),
+    )
+    database_name: str = Field(
+        "",
+        description="Database name (initial catalog)",
+        validation_alias=AliasChoices("databaseName", "DatabaseName"),
+    )
+    sample_sql: str = Field(
+        "",
+        description="Sample SELECT text representing table contents.",
+    )
     fields: list[RagField] = Field(default_factory=list, validation_alias=AliasChoices("fields", "Fields"))
     relations: list[RagRelation] = Field(default_factory=list)
 
@@ -79,7 +93,7 @@ class RagEntity(BaseModel):
     def id_str(cls, v: Any) -> str:
         return _coerce_id(v)
 
-    @field_validator("name", "display_name", "description", mode="before")
+    @field_validator("name", "display_name", "description", "schema_name", "database_name", "sample_sql", mode="before")
     @classmethod
     def str_fields(cls, v: Any) -> str:
         return _str_or_empty(v)

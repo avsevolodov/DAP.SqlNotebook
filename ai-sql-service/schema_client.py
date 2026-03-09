@@ -6,9 +6,11 @@ Catalog API: same host, path /api/v1/catalog/nodes.
 """
 import os
 import re
-from typing import Any
+from typing import Any, List, Optional
 
 import requests
+
+from dtos import CatalogNodeInfoDto, DbEntityInfoDto
 
 _SCHEMA_CACHE: dict[str, Any] = {}
 
@@ -55,6 +57,12 @@ def get_databases() -> list[dict]:
         return []
 
 
+def get_databases_typed() -> List[CatalogNodeInfoDto]:
+    """Typed wrapper over get_databases() returning Contract DTOs."""
+    raw = get_databases()
+    return [CatalogNodeInfoDto.model_validate(n) for n in raw]
+
+
 def get_tables() -> list[dict]:
     """List all tables (entities) with id, name, displayName, description."""
     base = _catalog_base_url()
@@ -65,6 +73,25 @@ def get_tables() -> list[dict]:
         return r.json() or []
     except Exception:
         return []
+
+
+def get_entities_for_database(node_id: str) -> List[DbEntityInfoDto]:
+    """Get entities (tables) for a specific catalog database/source node."""
+    base = _catalog_base_url()
+    url = f"{base}/api/v1/catalog/entities?nodeId={node_id}"
+    try:
+        r = requests.get(url, timeout=REQUEST_TIMEOUT_SEC)
+        r.raise_for_status()
+        data = r.json() or []
+    except Exception:
+        data = []
+    entities: List[DbEntityInfoDto] = []
+    for e in data:
+        try:
+            entities.append(DbEntityInfoDto.model_validate(e))
+        except Exception:
+            continue
+    return entities
 
 
 def get_entity_fields(entity_id: str) -> list[dict]:
@@ -89,6 +116,22 @@ def get_entity_relations(entity_id: str) -> list[dict]:
         return r.json() or []
     except Exception:
         return []
+
+
+def get_entity_select_text(entity_id: str, top: Optional[int] = None) -> Optional[str]:
+    """Get SELECT text snippet for a table (entity) to represent its contents."""
+    base = _catalog_base_url()
+    url = f"{base}/api/v1/catalog/entity/{entity_id}/select-text"
+    if top is not None:
+        url += f"?top={top}"
+    try:
+        r = requests.get(url, timeout=REQUEST_TIMEOUT_SEC)
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        return (r.json() if r.headers.get("content-type", "").startswith("application/json") else r.text) or None
+    except Exception:
+        return None
 
 
 def _fetch_schema() -> dict:

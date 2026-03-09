@@ -1,6 +1,7 @@
 """API route handlers for AI SQL service."""
 import logging
-from typing import Any
+import re
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
 from langchain_core.prompts import ChatPromptTemplate
@@ -41,15 +42,201 @@ router = APIRouter()
 # Prompt/response limits (single responsibility, avoid magic numbers)
 MAX_CHAT_TURNS_IN_PROMPT = 20
 MAX_SNIPPET_LENGTH = 500
-MAX_FIND_TABLES_RESULT = 15
+# Vector search: return top N tables from embedding(query)
+MAX_FIND_TABLES_RESULT = 20
+# How many candidate tables to send into LLM reasoning step
+MAX_FIND_TABLES_CANDIDATES = 10
 AUTOCOMPLETE_PREVIEW_LENGTH = 52
-RAG_RETRIEVER_K_FIND_TABLES = 15
+RAG_RETRIEVER_K_FIND_TABLES = 20
 RAG_RETRIEVER_K_AUTOCOMPLETE = 10
 RAG_RELATED_K_AUTOCOMPLETE = 5
 FOCUSED_SCHEMA_RETRIEVER_K = 12
 MAX_COLUMNS_PER_TABLE_AUTOCOMPLETE = 15
 MAX_AUTOCOMPLETE_SUGGESTIONS = 5
 MAX_TABLE_DESC_PREVIEW_CHARS = 200
+
+
+def _detect_scope(description: str) -> Dict[str, Optional[str]]:
+    """
+    Detect search scope from user description (rule-based).
+
+    Returns dict with optional keys:
+    - database: explicit database name if mentioned
+    - schema: explicit schema name if mentioned
+    - domain: logical domain hint (not yet used for filtering)
+    """
+    text = (description or "").strip()
+    lower = text.lower()
+    database: Optional[str] = None
+    schema: Optional[str] = None
+    domain: Optional[str] = None
+
+    # 1) Fully qualified name: db.schema.table
+    m_full = re.search(r"([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)", text)
+    if m_full:
+        database = m_full.group(1)
+        schema = m_full.group(2)
+
+    # 2) Simple patterns in natural language (ru/en) like "в БД billing" / "in database billing".
+    if database is None:
+        m_db = re.search(
+            r"(?:в\s+бд|в\s+базе\s+данных|из\s+бд|из\s+базы\s+данных|database|db)\s+([A-Za-z0-9_]+)",
+            lower,
+        )
+        if m_db:
+            database = m_db.group(1)
+
+    if schema is None:
+        m_schema = re.search(
+            r"(?:в\s+схеме|из\s+схемы|schema)\s+([A-Za-z0-9_]+)",
+            lower,
+        )
+        if m_schema:
+            schema = m_schema.group(1)
+
+    # 3) Domain hint (e.g. "финансы", "payments", "billing", etc.) – kept for future tag-based filtering.
+    # For now we simply leave it as None; can be extended later.
+
+    return {
+        "database": database,
+        "schema": schema,
+        "domain": domain,
+    }
+
+
+def _build_metadata_filter(scope: Dict[str, Optional[str]]) -> Optional[dict]:
+    """
+    Build vector-store metadata filter for Qdrant based on detected scope.
+
+    Example output:
+    {"must": [{"key": "database", "match": {"value": "billing"}}, {"key": "schema", "match": {"value": "dbo"}}]}
+    """
+    if not scope:
+        return None
+    clauses = []
+    db = (scope.get("database") or "").strip()
+    if db:
+        clauses.append({"key": "database", "match": {"value": db}})
+    sch = (scope.get("schema") or "").strip()
+    if sch:
+        clauses.append({"key": "schema", "match": {"value": sch}})
+    # Domain/Tags can be added here later when available in metadata.
+    if not clauses:
+        return None
+    return {"must": clauses}
+
+
+def _candidate_from_doc(doc: Any) -> Optional[Dict[str, str]]:
+    """Build a compact candidate table description from RAG document for LLM reasoning."""
+    meta = getattr(doc, "metadata", {}) or {}
+    name = (meta.get("name") or "").strip()
+    display = (meta.get("displayName") or name).strip()
+    database = (meta.get("database") or "").strip()
+    schema = (meta.get("schema") or "").strip()
+
+    qualified_parts = [p for p in [database, schema, name] if p]
+    qualified_name = ".".join(qualified_parts) if qualified_parts else (display or name)
+    if not qualified_name:
+        return None
+
+    desc = (meta.get("description") or "").strip()
+    if len(desc) > MAX_TABLE_DESC_PREVIEW_CHARS:
+        desc_preview = desc[:MAX_TABLE_DESC_PREVIEW_CHARS] + "..."
+    else:
+        desc_preview = desc
+
+    # Extract columns block from page_content (between "Columns:" and next header/blank).
+    columns_lines: list[str] = []
+    page = (getattr(doc, "page_content", "") or "").splitlines()
+    in_columns = False
+    for line in page:
+        if line.startswith("Columns:"):
+            in_columns = True
+            continue
+        if in_columns:
+            if not line.strip():
+                break
+            if line.startswith(("Relations:", "Sample SQL:", "Database:", "Schema:", "Table:", "Type:")):
+                break
+            columns_lines.append(line.strip())
+    columns = "; ".join(columns_lines)
+
+    return {
+        "qualified_name": qualified_name,
+        "display_name": display,
+        "description": desc_preview,
+        "columns": columns,
+    }
+
+
+def _reason_tables_with_llm(description: str, candidates: list[Dict[str, str]]) -> list[str]:
+    """
+    Step 4: LLM reasoning over candidate tables.
+
+    LLM получает:
+      - вопрос пользователя
+      - top 5–10 таблиц с описанием и колонками
+
+    И возвращает упорядоченный список наиболее релевантных таблиц
+    (возможно, несколько, если нужны join'ы).
+    """
+    if not candidates:
+        return []
+
+    model = get_llm_find_tables()
+
+    lines: list[str] = []
+    for idx, c in enumerate(candidates, start=1):
+        header = f"{idx}. {c['qualified_name']} — {c['description']}".rstrip()
+        lines.append(header)
+        if c["columns"]:
+            lines.append(f"   Columns: {c['columns']}")
+    tables_block = "\n".join(lines)
+
+    prompt_tmpl = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "You help choose the most relevant database tables for answering a user question. "
+                "You are given a small list of candidate tables with their descriptions and columns. "
+                "Decide which table or tables are most appropriate, whether joins are needed, and which columns matter. "
+                "Return ONLY the chosen table names, one per line, most relevant first. "
+                "Start each line with the fully qualified table name (e.g. db.schema.table). "
+                "Do not add explanations, bullet markers, or numbering.",
+            ),
+            (
+                "human",
+                "User question:\n"
+                "{question}\n\n"
+                "Here are candidate tables:\n"
+                "{candidates}\n\n"
+                "List the tables you would use (one per line).",
+            ),
+        ]
+    )
+
+    prompt = prompt_tmpl.format(question=description, candidates=tables_block)
+    result = model.invoke(prompt, config={"callbacks": [get_console_handler()]})
+    raw = result.content if isinstance(result.content, str) else str(result.content)
+
+    final_tables: list[str] = []
+    seen: set[str] = set()
+    for line in raw.strip().split("\n"):
+        s = line.strip()
+        if not s:
+            continue
+        # Assume first token (up to ' —' or ' - ') is the table name.
+        name_part = s.split("—", 1)[0].split("-", 1)[0].strip()
+        if not name_part:
+            continue
+        key = name_part.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        final_tables.append(name_part)
+        if len(final_tables) >= MAX_FIND_TABLES_RESULT:
+            break
+    return final_tables
 
 
 @router.get("/health")
@@ -82,9 +269,13 @@ def api_get_table_relations(entity_id: str) -> list[dict[str, Any]]:
     return get_entity_relations(entity_id)
 
 
-def _get_rag_table_retriever():
-    """Retriever over schema RAG index (for find_tables)."""
-    return get_retriever(use_separate_endpoints=True, k=RAG_RETRIEVER_K_FIND_TABLES)
+def _get_rag_table_retriever(metadata_filter: Optional[dict] = None):
+    """Retriever over schema RAG index (for find_tables), optionally scoped by metadata filter."""
+    return get_retriever(
+        use_separate_endpoints=True,
+        k=RAG_RETRIEVER_K_FIND_TABLES,
+        metadata_filter=metadata_filter,
+    )
 
 
 @router.post("/generate-sql", response_model=GenerateSqlResponse)
@@ -188,10 +379,32 @@ def find_tables(body: FindTablesRequest) -> FindTablesResponse:
 
     tables: list[str] = []
     try:
-        retriever = _get_rag_table_retriever()
+        scope = _detect_scope(description)
+        metadata_filter = _build_metadata_filter(scope)
+        if metadata_filter:
+            logger.debug("find_tables scope detected: %s", scope)
+        retriever = _get_rag_table_retriever(metadata_filter=metadata_filter)
         if retriever:
             callbacks = [get_console_handler()]
             docs = retriever.invoke(description, config={"callbacks": callbacks})
+            # Step 4: LLM reasoning over top candidate tables (limited to MAX_FIND_TABLES_CANDIDATES).
+            candidates: list[Dict[str, str]] = []
+            for d in docs:
+                c = _candidate_from_doc(d)
+                if c:
+                    candidates.append(c)
+                if len(candidates) >= MAX_FIND_TABLES_CANDIDATES:
+                    break
+
+            if candidates:
+                try:
+                    reasoned_tables = _reason_tables_with_llm(description, candidates)
+                    if reasoned_tables:
+                        return FindTablesResponse(tables=reasoned_tables[:MAX_FIND_TABLES_RESULT])
+                except Exception as ex:
+                    logger.warning("LLM reasoning for find_tables failed, falling back to vector order: %s", ex)
+
+            # Fallback: simple vector order by similarity if LLM step failed.
             seen: set[str] = set()
             for d in docs:
                 display = (d.metadata.get("displayName") or d.metadata.get("name") or "").strip()
