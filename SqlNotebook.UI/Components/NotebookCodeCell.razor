@@ -25,32 +25,34 @@
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="notebook-cell-db-chip">@Cell.DatabaseDisplayName</MudChip>
                 }
                 <div class="flex-grow-1"></div>
-                @* Type-specific: Run, Copy, Paste to editor, Format; Line numbers; Result view; Move/Copy cell; Delete on the right *@
+                @* Type-specific: Run, Copy, Paste to editor; Chart type (SQL only); Move/Copy cell; Delete on the right *@
                 @if (!_collapsed)
                 {
                     <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" Title="Run" OnClick="RunCell" Disabled="@_running" />
                     <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Title="Copy" OnClick="@(() => CopyContent(Cell.Content))" />
                     <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Title="Paste to editor" OnClick="@(() => PasteToEditor(Cell.Content))" />
-                    <MudIconButton Icon="@Icons.Material.Filled.FormatAlignLeft" Size="Size.Small" Title="Format" OnClick="@(() => FormatCell())" />
-
-                    <MudIconButton Icon="@Icons.Material.Filled.FormatListNumbered"
-                                   Size="Size.Small"
-                                   Color="@(_showLineNumbers ? Color.Primary : Color.Default)"
-                                   Title="@(_showLineNumbers ? "Hide line numbers" : "Show line numbers")"
-                                   OnClick="@ToggleLineNumbers" />
-
                     @if (Cell.Type == NotebookCellTypeInfo.Sql && Cell.ExecutionResult != null && Cell.ExecutionResult.Columns != null && Cell.ExecutionResult.Columns.Length > 0)
                     {
                         <MudIconButton Icon="@Icons.Material.Filled.TableChart"
                                        Size="Size.Small"
-                                       Color="@(_resultView == ResultViewMode.Table ? Color.Primary : Color.Default)"
-                                       Title="Table view"
-                                       OnClick="@(() => _resultView = ResultViewMode.Table)" />
+                                       Color="@(IsChartTypeSelected("table") ? Color.Primary : Color.Default)"
+                                       Title="Chart type: Table"
+                                       OnClick="SetChartTypeTable" />
+                        <MudIconButton Icon="@Icons.Material.Filled.ShowChart"
+                                       Size="Size.Small"
+                                       Color="@(IsChartTypeSelected("line") ? Color.Primary : Color.Default)"
+                                       Title="Chart type: Line"
+                                       OnClick="SetChartTypeLine" />
                         <MudIconButton Icon="@Icons.Material.Filled.BarChart"
                                        Size="Size.Small"
-                                       Color="@(_resultView == ResultViewMode.Charts ? Color.Primary : Color.Default)"
-                                       Title="Charts view"
-                                       OnClick="@(() => _resultView = ResultViewMode.Charts)" />
+                                       Color="@(IsChartTypeSelected("bar") ? Color.Primary : Color.Default)"
+                                       Title="Chart type: Bar"
+                                       OnClick="SetChartTypeBar" />
+                        <MudIconButton Icon="@Icons.Material.Filled.PieChart"
+                                       Size="Size.Small"
+                                       Color="@(IsChartTypeSelected("pie") ? Color.Primary : Color.Default)"
+                                       Title="Chart type: Pie"
+                                       OnClick="SetChartTypePie" />
                     }
 
                     <MudIconButton Icon="@Icons.Material.Filled.FileCopy"
@@ -73,20 +75,7 @@
             </div>
             @if (!_collapsed)
             {
-                @if (_showLineNumbers)
-                {
-                    <pre class="notebook-cell-code mud-typography mud-typography-body2">
-@foreach (var line in GetCodeLines())
-{
-@($"{line.Number,4}: {line.Text}")
-@("\n")
-}
-                    </pre>
-                }
-                else
-                {
-                    <pre class="notebook-cell-code mud-typography mud-typography-body2"><code class="language-sql">@Cell.Content</code></pre>
-                }
+                <pre class="notebook-cell-code mud-typography mud-typography-body2"><code class="language-sql">@Cell.Content</code></pre>
             }
             else
             {
@@ -270,7 +259,7 @@
                 _cellError = result.Error ?? "Execution failed.";
                 return;
             }
-            if (Cell.Type == NotebookCellTypeInfo.Chart && !string.IsNullOrEmpty(Cell.ExecutionResult?.ChartType))
+            if (!string.IsNullOrEmpty(Cell.ExecutionResult?.ChartType))
                 result.ChartType = Cell.ExecutionResult.ChartType;
             Cell.ExecutionResult = result;
             if (Cell.CatalogNodeId == null && SelectedDatabase != null)
@@ -339,4 +328,38 @@
         _cellError = null;
         await InvokeAsync(StateHasChanged);
     }
+
+        private string GetCurrentChartType()
+        {
+            return (Cell.ExecutionResult?.ChartType ?? string.Empty).Trim().ToLowerInvariant();
+        }
+
+        private bool IsChartTypeSelected(string chartType)
+        {
+            var current = GetCurrentChartType();
+            if (string.IsNullOrEmpty(current) && chartType == "line")
+                return _resultView == ResultViewMode.Charts;
+            return current == chartType;
+        }
+
+        private Task SetChartTypeTable() => SetChartTypeInternal("table");
+        private Task SetChartTypeLine() => SetChartTypeInternal("line");
+        private Task SetChartTypeBar() => SetChartTypeInternal("bar");
+        private Task SetChartTypePie() => SetChartTypeInternal("pie");
+
+        private async Task SetChartTypeInternal(string chartType)
+        {
+            if (Cell.ExecutionResult == null)
+                return;
+
+            Cell.ExecutionResult.ChartType = chartType;
+
+            if (chartType == "table")
+                _resultView = ResultViewMode.Table;
+            else
+                _resultView = ResultViewMode.Charts;
+
+            if (OnChartTypeChanged.HasDelegate)
+                await OnChartTypeChanged.InvokeAsync((Cell.Id, chartType));
+        }
 }

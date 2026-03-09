@@ -289,6 +289,14 @@ code {
     overflow: hidden;
 }
 
+/* Notebook cell: container & code in frame with copy/paste actions */
+.notebook-cell-paper {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
+}
+
 /* Notebook cell: code in frame with copy/paste actions */
 .notebook-cell-code-frame {
     border: 1px solid rgba(0, 0, 0, 0.12);
@@ -350,6 +358,9 @@ code {
 .notebook-cell-result-wrap {
     min-height: 60px;
     margin-top: 8px;
+    padding-bottom: 8px;
+    max-width: 100%;
+    overflow-x: hidden;
 }
 .notebook-cell-result-overlay {
     position: absolute;
@@ -380,7 +391,9 @@ code {
 .notebook-result-table-wrap {
     width: 100%;
     max-width: 100%;
-    overflow: auto;
+    overflow-x: auto;
+    overflow-y: auto;
+    box-sizing: border-box;
 }
 
 .notebook-result-table {
@@ -390,9 +403,6 @@ code {
 .notebook-result-table thead th {
     background: var(--mud-palette-background-grey, #f5f5f5);
     font-weight: 600;
-    position: sticky;
-    top: 0;
-    z-index: 1;
 }
 
 .notebook-result-header {
@@ -443,6 +453,8 @@ code {
 .notebook-page-layout {
     flex: 1;
     min-height: 0;
+    min-width: 0;
+    overflow: auto;
 }
 .notebook-toc-sidebar {
     background: var(--mud-palette-background, #fff);
@@ -462,4 +474,19 @@ code {
 }
 .notebook-cell-wrapper {
     scroll-margin-top: 1rem;
+}
+
+/* Notebook page main: only vertical scroll, horizontal hidden (inner containers handle their own h-scroll) */
+.notebook-page-main {
+    overflow-x: hidden !important;
+}
+
+/* Ensure notebook cell row never wider than central area */
+.notebook-cell-wrapper > .d-flex.align-items-stretch {
+    max-width: 100%;
+}
+
+.notebook-cell-wrapper > .d-flex.align-items-stretch > .flex-grow-1 {
+    min-width: 0;
+    max-width: 100%;
 }

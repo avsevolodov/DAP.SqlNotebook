@@ -32,7 +32,7 @@ else if (Result.Columns != null && Result.Columns.Length > 0)
     else
     {
         <MudPaper Class="mt-2 notebook-result-table-wrap" Style="@(MaxHeight > 0 ? $"max-height:{MaxHeight}px;" : "")">
-            <MudTable Items="@SortedRows"
+            <MudTable Items="@Result?.Rows"
                       Dense="true"
                       Hover="true"
                       Striped="true"
@@ -75,33 +75,13 @@ else
     private int? _sortColumnIndex;
     private bool _sortAscending = true;
 
-    private IEnumerable<ExecutionResultRowInfo> SortedRows =>
-        GetSortedRows();
-
-    private IEnumerable<ExecutionResultRowInfo> GetSortedRows()
-    {
-        var rows = Result?.Rows ?? Array.Empty<ExecutionResultRowInfo>();
-        if (Result?.Columns == null || Result.Columns.Length == 0 || rows.Length == 0)
-            return rows;
-
-        if (_sortColumnIndex is null)
-            return rows;
-
-        var index = _sortColumnIndex.Value;
-
-        Func<ExecutionResultRowInfo, string> keySelector = row =>
-        {
-            var values = row.Values?.ToList() ?? new List<string>();
-            return index < values.Count ? values[index] ?? string.Empty : string.Empty;
-        };
-
-        return _sortAscending
-            ? rows.OrderBy(keySelector, StringComparer.OrdinalIgnoreCase)
-            : rows.OrderByDescending(keySelector, StringComparer.OrdinalIgnoreCase);
-    }
-
     private void ChangeSort(int columnIndex)
     {
+        if (Result?.Rows == null || Result.Rows.Length == 0)
+            return;
+        if (Result.Columns == null || Result.Columns.Length == 0)
+            return;
+
         if (_sortColumnIndex == columnIndex)
         {
             _sortAscending = !_sortAscending;
@@ -111,6 +91,22 @@ else
             _sortColumnIndex = columnIndex;
             _sortAscending = true;
         }
+
+        var rows = Result.Rows;
+        var index = _sortColumnIndex.Value;
+
+        Func<ExecutionResultRowInfo, string> keySelector = row =>
+        {
+            var values = row.Values?.ToList() ?? new List<string>();
+            return index < values.Count ? values[index] ?? string.Empty : string.Empty;
+        };
+
+        var sorted = (_sortAscending
+                ? rows.OrderBy(keySelector, StringComparer.OrdinalIgnoreCase)
+                : rows.OrderByDescending(keySelector, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+
+        Result.Rows = sorted;
     }
 
     private string GetSortIcon(int columnIndex)
