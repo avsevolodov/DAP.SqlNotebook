@@ -449,6 +449,61 @@ code {
     opacity: 0.8;
 }
 
+/* Workspaces cards (grid view) */
+.workspaces-grid {
+    row-gap: 16px;
+}
+
+.workspace-card {
+    border-radius: 12px;
+    overflow: hidden;
+    transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.workspace-card:hover {
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
+    transform: translateY(-2px);
+}
+
+.workspace-card-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding-bottom: 4px;
+}
+
+.workspace-card-icon {
+    flex-shrink: 0;
+}
+
+.workspace-card-main {
+    min-width: 0;
+}
+
+.workspace-card-title {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.workspace-card-description {
+    max-height: 3.2em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.workspace-card-meta {
+    margin-top: 4px;
+}
+
+.workspace-card-actions {
+    justify-content: flex-end;
+    padding-top: 0;
+}
+
 /* Notebook page: TOC sidebar and layout */
 .notebook-page-layout {
     flex: 1;

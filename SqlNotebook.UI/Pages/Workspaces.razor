@@ -23,7 +23,7 @@
             <MudButton Color="@(_workspaceViewMode == WorkspaceViewMode.Cards ? Color.Primary : Color.Default)" OnClick="@(() => _workspaceViewMode = WorkspaceViewMode.Cards)" StartIcon="@Icons.Material.Filled.ViewModule" title="Cards">Cards</MudButton>
             <MudButton Color="@(_workspaceViewMode == WorkspaceViewMode.Grid ? Color.Primary : Color.Default)" OnClick="@(() => _workspaceViewMode = WorkspaceViewMode.Grid)" StartIcon="@Icons.Material.Filled.ViewList" title="List">List</MudButton>
         </MudButtonGroup>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadWorkspaces">Refresh</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadWorkspaces" StartIcon="@Icons.Material.Filled.Refresh">Refresh</MudButton>
         <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="OpenCreateDialog">Create</MudButton>
     </MudStack>
 
@@ -34,25 +34,44 @@
 
     @if (_workspaceViewMode == WorkspaceViewMode.Cards)
     {
-        <MudGrid Class="mt-4">
+        <MudGrid Class="mt-4 workspaces-grid">
             @foreach (var row in _myWorkspacesGrid)
             {
                 <MudItem xs="12" sm="6" md="4" lg="3">
-                    <MudCard Class="fill-height" Elevation="2">
-                        <MudCardHeader>
-                            @if (!string.IsNullOrWhiteSpace(row.Icon))
-                            {
-                                <MudIcon Icon="@row.Icon" Class="mr-2" Size="Size.Small" />
-                            }
-                            <MudLink Href="@MainRoutes.GetNotebooksRoute(row.Id)" Typo="Typo.h6" Style="font-weight: 500;">@row.Name</MudLink>
-                        </MudCardHeader>
-                        <MudCardContent Class="pt-0">
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">@(row.Description ?? "—")</MudText>
+                    <MudCard Class="fill-height workspace-card" Elevation="2">
+                        <MudCardContent Class="workspace-card-content">
+                            <div class="workspace-card-icon">
+                                <MudAvatar Icon="@GetWorkspaceAvatarIcon(row)"
+                                           Color="@GetWorkspaceAvatarColor(row)"
+                                           Variant="Variant.Filled"
+                                           Size="Size.Medium" />
+                            </div>
+                            <div class="workspace-card-main">
+                                <MudLink Href="@MainRoutes.GetNotebooksRoute(row.Id)" Typo="Typo.subtitle1" Class="workspace-card-title">
+                                    @row.Name
+                                </MudLink>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="workspace-card-description">
+                                    @(row.Description ?? "—")
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="workspace-card-meta">
+                                    @(row.OwnerLogin ?? "—")
+                                </MudText>
+                            </div>
                         </MudCardContent>
-                        <MudCardActions>
-                            <MudIconButton Icon="@Icons.Material.Filled.List" Href="@MainRoutes.GetNotebooksRoute(row.Id)" Title="Notebooks" Size="Size.Small" />
-                            <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@(() => OpenEditDialog(row))" Title="Edit" Size="Size.Small" />
-                            <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="@(() => ConfirmDelete(row))" Title="Delete" Color="Color.Error" Size="Size.Small" />
+                        <MudCardActions Class="workspace-card-actions">
+                            <MudIconButton Icon="@Icons.Material.Filled.List"
+                                           Href="@MainRoutes.GetNotebooksRoute(row.Id)"
+                                           Title="Open notebooks"
+                                           Size="Size.Small" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                           OnClick="@(() => OpenEditDialog(row))"
+                                           Title="Edit workspace"
+                                           Size="Size.Small" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                           OnClick="@(() => ConfirmDelete(row))"
+                                           Title="Delete workspace"
+                                           Color="Color.Error"
+                                           Size="Size.Small" />
                         </MudCardActions>
                     </MudCard>
                 </MudItem>
@@ -188,6 +207,16 @@
         new(Icons.Material.Filled.AutoGraph, "Models")
     ];
 
+    private static readonly Color[] _avatarColors =
+    [
+        Color.Primary,
+        Color.Secondary,
+        Color.Info,
+        Color.Success,
+        Color.Warning,
+        Color.Error
+    ];
+
     private List<WorkspaceInfo> _workspaces = new();
     private List<WorkspaceInfo> _folderOptions = new();
     private bool _loading = true;
@@ -217,6 +246,33 @@
     private bool _sortAscending = true;
 
     private List<WorkspaceInfo> _myWorkspacesGrid => GetSortedWorkspaces().ToList();
+
+    private static string GetWorkspaceAvatarIcon(WorkspaceInfo workspace)
+    {
+        if (!string.IsNullOrWhiteSpace(workspace.Icon))
+            return workspace.Icon;
+
+        if (_iconOptions.Count == 0)
+            return Icons.Material.Filled.Folder;
+
+        var hash = workspace.Id.GetHashCode();
+        if (hash == int.MinValue)
+            hash = 0;
+        var index = Math.Abs(hash) % _iconOptions.Count;
+        return _iconOptions[index].Value;
+    }
+
+    private static Color GetWorkspaceAvatarColor(WorkspaceInfo workspace)
+    {
+        if (_avatarColors.Length == 0)
+            return Color.Primary;
+
+        var hash = workspace.Id.GetHashCode();
+        if (hash == int.MinValue)
+            hash = 0;
+        var index = Math.Abs(hash) % _avatarColors.Length;
+        return _avatarColors[index];
+    }
 
     private IEnumerable<WorkspaceInfo> GetSortedWorkspaces()
     {
