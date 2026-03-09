@@ -31,6 +31,14 @@
                     <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" Title="Run" OnClick="RunCell" Disabled="@_running" />
                     <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Title="Copy" OnClick="@(() => CopyContent(Cell.Content))" />
                     <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Title="Paste to editor" OnClick="@(() => PasteToEditor(Cell.Content))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.FormatAlignLeft" Size="Size.Small" Title="Format" OnClick="@(() => FormatCell())" />
+
+                    <MudIconButton Icon="@Icons.Material.Filled.FormatListNumbered"
+                                   Size="Size.Small"
+                                   Color="@(_showLineNumbers ? Color.Primary : Color.Default)"
+                                   Title="@(_showLineNumbers ? "Hide line numbers" : "Show line numbers")"
+                                   OnClick="@ToggleLineNumbers" />
+
                     @if (Cell.Type == NotebookCellTypeInfo.Sql && Cell.ExecutionResult != null && Cell.ExecutionResult.Columns != null && Cell.ExecutionResult.Columns.Length > 0)
                     {
                         <MudIconButton Icon="@Icons.Material.Filled.TableChart"
@@ -84,15 +92,20 @@
         </div>
         @if (!_collapsed)
         {
-            @if (Cell.Type == NotebookCellTypeInfo.Chart && Cell.ExecutionResult != null && !string.IsNullOrEmpty(Cell.ExecutionResult.ChartType))
+            @if (Cell.ExecutionResult != null && Cell.ExecutionResult.Columns != null && Cell.ExecutionResult.Columns.Length > 0)
             {
                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mt-2">
-                    <MudText Typo="Typo.caption">Chart type:</MudText>
-                    <MudSelect T="string" Value="@(Cell.ExecutionResult.ChartType ?? "line")" ValueChanged="(string v) => OnChartTypeChanged.InvokeAsync((Cell.Id, v))" Variant="Variant.Outlined" Dense="true" Style="max-width: 120px;">
+                    <MudText Typo="Typo.caption">View as:</MudText>
+                    <MudSelect T="string"
+                               Value="@(Cell.ExecutionResult.ChartType ?? "table")"
+                               ValueChanged="(string v) => OnChartTypeChanged.InvokeAsync((Cell.Id, v))"
+                               Variant="Variant.Outlined"
+                               Dense="true"
+                               Style="max-width: 140px;">
+                        <MudSelectItem Value="@("table")">Table</MudSelectItem>
                         <MudSelectItem Value="@("line")">Line</MudSelectItem>
                         <MudSelectItem Value="@("bar")">Bar</MudSelectItem>
                         <MudSelectItem Value="@("pie")">Pie</MudSelectItem>
-                        <MudSelectItem Value="@("table")">Table</MudSelectItem>
                     </MudSelect>
                 </MudStack>
             }
@@ -111,7 +124,7 @@
                 }
                 <NotebookQueryResult Result="@Cell.ExecutionResult"
                                      MaxHeight="300"
-                                     ForceTable="@(Cell.Type == NotebookCellTypeInfo.Sql && _resultView == ResultViewMode.Table)" />
+                                     ForceTable="@(_resultView == ResultViewMode.Table)" />
             </div>
         }
     </MudStack>
@@ -169,7 +182,7 @@
         return Cell.Type switch
         {
             NotebookCellTypeInfo.Sql => "SQL",
-            NotebookCellTypeInfo.Chart => "Chart",
+            NotebookCellTypeInfo.Chart => "SQL",
             _ => "Cell"
         };
     }

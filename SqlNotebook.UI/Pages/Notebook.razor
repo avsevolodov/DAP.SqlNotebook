@@ -60,9 +60,8 @@ else if (_notebook != null)
                     <ChildContent>
                         <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Sql))" Icon="@Icons.Material.Filled.Code">SQL</MudMenuItem>
                         <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Markdown))" Icon="@Icons.Material.Filled.TextFields">Markdown</MudMenuItem>
-                        <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Chart))" Icon="@Icons.Material.Filled.BarChart">Chart</MudMenuItem>
-                        <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Mermaid))" Icon="@Icons.Material.Filled.AccountTree">Mermaid</MudMenuItem>
-                        <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Excalidraw))" Icon="@Icons.Material.Filled.Gesture">Diagram</MudMenuItem>
+                        <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Mermaid))" Icon="@Icons.Material.Filled.AccountTree">Diagram</MudMenuItem>
+                        <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Excalidraw))" Icon="@Icons.Material.Filled.Gesture">Excalidraw</MudMenuItem>
                     </ChildContent>
                 </MudMenu>
             </MudStack>
@@ -524,15 +523,6 @@ else if (_loadAttempted)
                 CatalogNodeId = _selectedDatabase?.Id,
                 DatabaseDisplayName = _selectedDatabase?.DatabaseName ?? _selectedDatabase?.Name,
             },
-            NotebookCellTypeInfo.Chart => new NotebookCellInfo
-            {
-                Id = 0,
-                Type = NotebookCellTypeInfo.Chart,
-                Content = content,
-                ExecutionResult = _currentRunResult ?? new NotebookCellExecutionResultInfo(),
-                CatalogNodeId = _selectedDatabase?.Id,
-                DatabaseDisplayName = _selectedDatabase?.DatabaseName ?? _selectedDatabase?.Name,
-            },
             NotebookCellTypeInfo.Markdown => new NotebookCellInfo
             {
                 Id = 0,
@@ -571,7 +561,7 @@ else if (_loadAttempted)
         var updated = await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
         MergeCellIdsFromResponse(updated);
 
-        if (cellType == NotebookCellTypeInfo.Sql || cellType == NotebookCellTypeInfo.Chart || cellType == NotebookCellTypeInfo.Markdown)
+        if (cellType == NotebookCellTypeInfo.Sql || cellType == NotebookCellTypeInfo.Markdown)
         {
             _currentRunResult = null;
             _sqlEditorContent = "";
