@@ -1,6 +1,7 @@
 @using DAP.SqlNotebook.Contract.Entities
 @using global::MudBlazor
 @using MudBlazor
+@using System.Linq
 
 @if (Result is null)
 {
@@ -30,12 +31,21 @@ else if (Result.Columns != null && Result.Columns.Length > 0)
     }
     else
     {
-        <MudPaper Class="mt-2" Style="@(MaxHeight > 0 ? $"max-height:{MaxHeight}px;overflow:auto;" : "")">
-            <MudTable Items="@(Result.Rows ?? Array.Empty<ExecutionResultRowInfo>())" Dense="true" Hover="true" Striped="true" Breakpoint="Breakpoint.Sm" Class="mt-0">
+        <MudPaper Class="mt-2 notebook-result-table-wrap" Style="@(MaxHeight > 0 ? $"max-height:{MaxHeight}px;" : "")">
+            <MudTable Items="@SortedRows"
+                      Dense="true"
+                      Hover="true"
+                      Striped="true"
+                      Breakpoint="Breakpoint.Sm"
+                      Class="mt-0 notebook-result-table">
                 <HeaderContent>
-                    @foreach (var col in columns)
+                    @for (var i = 0; i < columns.Length; i++)
                     {
-                        <MudTh>@col.Name</MudTh>
+                        var col = columns[i];
+                        <th class="notebook-result-header @(GetSortHeaderClass(i))" @onclick="@(() => ChangeSort(i))">
+                            <span>@col.Name</span>
+                            <MudIcon Icon="@GetSortIcon(i)" Size="Size.Small" Class="ml-1 notebook-result-sort-icon" />
+                        </th>
                     }
                 </HeaderContent>
                 <RowTemplate Context="row">
@@ -61,6 +71,60 @@ else
     [Parameter] public NotebookCellExecutionResultInfo? Result { get; set; }
     [Parameter] public int MaxHeight { get; set; }
     [Parameter] public bool ForceTable { get; set; }
+
+    private int? _sortColumnIndex;
+    private bool _sortAscending = true;
+
+    private IEnumerable<ExecutionResultRowInfo> SortedRows =>
+        GetSortedRows();
+
+    private IEnumerable<ExecutionResultRowInfo> GetSortedRows()
+    {
+        var rows = Result?.Rows ?? Array.Empty<ExecutionResultRowInfo>();
+        if (Result?.Columns == null || Result.Columns.Length == 0 || rows.Length == 0)
+            return rows;
+
+        if (_sortColumnIndex is null)
+            return rows;
+
+        var index = _sortColumnIndex.Value;
+
+        Func<ExecutionResultRowInfo, string> keySelector = row =>
+        {
+            var values = row.Values?.ToList() ?? new List<string>();
+            return index < values.Count ? values[index] ?? string.Empty : string.Empty;
+        };
+
+        return _sortAscending
+            ? rows.OrderBy(keySelector, StringComparer.OrdinalIgnoreCase)
+            : rows.OrderByDescending(keySelector, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private void ChangeSort(int columnIndex)
+    {
+        if (_sortColumnIndex == columnIndex)
+        {
+            _sortAscending = !_sortAscending;
+        }
+        else
+        {
+            _sortColumnIndex = columnIndex;
+            _sortAscending = true;
+        }
+    }
+
+    private string GetSortIcon(int columnIndex)
+    {
+        if (_sortColumnIndex != columnIndex)
+            return Icons.Material.Filled.UnfoldMore;
+
+        return _sortAscending ? Icons.Material.Filled.ArrowUpward : Icons.Material.Filled.ArrowDownward;
+    }
+
+    private string GetSortHeaderClass(int columnIndex)
+    {
+        return _sortColumnIndex == columnIndex ? "notebook-result-header-active" : string.Empty;
+    }
 
     private sealed class ChartData
     {

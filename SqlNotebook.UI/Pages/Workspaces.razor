@@ -61,37 +61,48 @@
     }
     else
     {
-        <MudSimpleTable Class="mt-4" Hover="true" Striped="true" Breakpoint="Breakpoint.Sm">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Description</th>
-                    <th>Owner</th>
-                    <th style="width:120px;">Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var row in _myWorkspacesGrid)
-                {
+        <div class="workspaces-table-wrap">
+            <MudSimpleTable Class="mt-4 workspaces-table" Hover="true" Striped="true" Breakpoint="Breakpoint.Sm">
+                <thead>
                     <tr>
-                        <td>
-                            @if (!string.IsNullOrWhiteSpace(row.Icon))
-                            {
-                                <MudIcon Icon="@row.Icon" Size="Size.Small" Class="mr-1" />
-                            }
-                            <MudLink Href="@MainRoutes.GetNotebooksRoute(row.Id)" Typo="Typo.body1">@row.Name</MudLink>
-                        </td>
-                        <td><MudText Typo="Typo.body2" Color="Color.Secondary">@(row.Description ?? "—")</MudText></td>
-                        <td><MudText Typo="Typo.body2">@(row.OwnerLogin ?? "—")</MudText></td>
-                        <td>
-                            <MudIconButton Icon="@Icons.Material.Filled.List" Href="@MainRoutes.GetNotebooksRoute(row.Id)" Size="Size.Small" title="Notebooks" />
-                            <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@(() => OpenEditDialog(row))" Size="Size.Small" title="Edit" />
-                            <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="@(() => ConfirmDelete(row))" Size="Size.Small" Color="Color.Error" title="Delete" />
-                        </td>
+                        <th class="sortable-header" @onclick="@(() => ChangeSort(WorkspaceSortColumn.Name))">
+                            <span>Name</span>
+                            <MudIcon Icon="@GetSortIcon(WorkspaceSortColumn.Name)" Size="Size.Small" Class="ml-1 sort-icon" />
+                        </th>
+                        <th class="sortable-header" @onclick="@(() => ChangeSort(WorkspaceSortColumn.Description))">
+                            <span>Description</span>
+                            <MudIcon Icon="@GetSortIcon(WorkspaceSortColumn.Description)" Size="Size.Small" Class="ml-1 sort-icon" />
+                        </th>
+                        <th class="sortable-header" @onclick="@(() => ChangeSort(WorkspaceSortColumn.Owner))">
+                            <span>Owner</span>
+                            <MudIcon Icon="@GetSortIcon(WorkspaceSortColumn.Owner)" Size="Size.Small" Class="ml-1 sort-icon" />
+                        </th>
+                        <th style="width:120px;">Actions</th>
                     </tr>
-                }
-            </tbody>
-        </MudSimpleTable>
+                </thead>
+                <tbody>
+                    @foreach (var row in _myWorkspacesGrid)
+                    {
+                        <tr>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(row.Icon))
+                                {
+                                    <MudIcon Icon="@row.Icon" Size="Size.Small" Class="mr-1" />
+                                }
+                                <MudLink Href="@MainRoutes.GetNotebooksRoute(row.Id)" Typo="Typo.body1">@row.Name</MudLink>
+                            </td>
+                            <td><MudText Typo="Typo.body2" Color="Color.Secondary">@(row.Description ?? "—")</MudText></td>
+                            <td><MudText Typo="Typo.body2">@(row.OwnerLogin ?? "—")</MudText></td>
+                            <td>
+                                <MudIconButton Icon="@Icons.Material.Filled.List" Href="@MainRoutes.GetNotebooksRoute(row.Id)" Size="Size.Small" title="Notebooks" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@(() => OpenEditDialog(row))" Size="Size.Small" title="Edit" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="@(() => ConfirmDelete(row))" Size="Size.Small" Color="Color.Error" title="Delete" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        </div>
     }
 
     @if (!_loading && _myWorkspacesGrid.Count == 0)
@@ -191,12 +202,61 @@
     private WorkspaceVisibilityInfo _editVisibility = WorkspaceVisibilityInfo.Private;
 
     private string? _workspaceSearch;
+
     private enum WorkspaceViewMode { Cards, Grid }
     private WorkspaceViewMode _workspaceViewMode = WorkspaceViewMode.Cards;
-    private List<WorkspaceInfo> _myWorkspacesGrid => _workspaces
-        .Where(x => !x.IsFolder)
-        .Where(x => string.IsNullOrWhiteSpace(_workspaceSearch) || (x.Name?.Contains(_workspaceSearch!, StringComparison.OrdinalIgnoreCase) ?? false))
-        .ToList();
+
+    private enum WorkspaceSortColumn
+    {
+        Name,
+        Description,
+        Owner
+    }
+
+    private WorkspaceSortColumn _sortColumn = WorkspaceSortColumn.Name;
+    private bool _sortAscending = true;
+
+    private List<WorkspaceInfo> _myWorkspacesGrid => GetSortedWorkspaces().ToList();
+
+    private IEnumerable<WorkspaceInfo> GetSortedWorkspaces()
+    {
+        var query = _workspaces
+            .Where(x => !x.IsFolder)
+            .Where(x => string.IsNullOrWhiteSpace(_workspaceSearch) || (x.Name?.Contains(_workspaceSearch!, StringComparison.OrdinalIgnoreCase) ?? false))
+            .AsEnumerable();
+
+        return (_sortColumn, _sortAscending) switch
+        {
+            (WorkspaceSortColumn.Name, true) => query.OrderBy(x => x.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            (WorkspaceSortColumn.Name, false) => query.OrderByDescending(x => x.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            (WorkspaceSortColumn.Description, true) => query.OrderBy(x => x.Description ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            (WorkspaceSortColumn.Description, false) => query.OrderByDescending(x => x.Description ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            (WorkspaceSortColumn.Owner, true) => query.OrderBy(x => x.OwnerLogin ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            (WorkspaceSortColumn.Owner, false) => query.OrderByDescending(x => x.OwnerLogin ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            _ => query
+        };
+    }
+
+    private void ChangeSort(WorkspaceSortColumn column)
+    {
+        if (_sortColumn == column)
+        {
+            _sortAscending = !_sortAscending;
+        }
+        else
+        {
+            _sortColumn = column;
+            _sortAscending = true;
+        }
+    }
+
+    private string GetSortIcon(WorkspaceSortColumn column)
+    {
+        if (_sortColumn != column)
+            return Icons.Material.Filled.UnfoldMore;
+
+        return _sortAscending ? Icons.Material.Filled.ArrowUpward : Icons.Material.Filled.ArrowDownward;
+    }
 
     protected override async Task OnInitializedAsync()
     {
