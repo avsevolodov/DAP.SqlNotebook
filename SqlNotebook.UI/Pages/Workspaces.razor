@@ -109,7 +109,21 @@
             <MudSwitch @bind-Value="_editIsFolder" Label="Folder (for grouping only)" Color="Color.Primary" Class="mt-2" Disabled="@_isEdit" />
             <MudTextField @bind-Value="_editName" Label="Name" Variant="Variant.Outlined" Class="mt-2" Required />
             <MudTextField @bind-Value="_editDescription" Label="Description" Variant="Variant.Outlined" Class="mt-2" Lines="2" />
-            <MudTextField @bind-Value="_editIcon" Label="Icon (Material icon name, e.g. folder_special)" Variant="Variant.Outlined" Class="mt-2" Placeholder="folder" />
+            <MudTextField @bind-Value="_editIcon" Label="Icon (Material icon name, e.g. folder_special)" Variant="Variant.Outlined" Class="mt-2" Placeholder="folder">
+                <Adornment End>
+                    <MudIconButton Icon="@Icons.Material.Filled.Clear" Size="Size.Small" OnClick="@(() => _editIcon = null)" Disabled="@string.IsNullOrWhiteSpace(_editIcon)" />
+                </Adornment>
+            </MudTextField>
+            <MudText Typo="Typo.caption" Class="mt-1">Quick icons</MudText>
+            <MudStack Row="true" Spacing="1" Class="mt-1" Wrap="Wrap.Wrap">
+                @foreach (var option in _iconOptions)
+                {
+                    <MudChip Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => _editIcon = option.Value)" Style="cursor: pointer;">
+                        <MudIcon Icon="@option.Value" Size="Size.Small" Class="mr-1" />
+                        @option.Label
+                    </MudChip>
+                }
+            </MudStack>
             <MudSelect T="WorkspaceVisibilityInfo" @bind-Value="_editVisibility" Label="Visibility" Variant="Variant.Outlined" Class="mt-2">
                 <MudSelectItem T="WorkspaceVisibilityInfo" Value="@WorkspaceVisibilityInfo.Private">Private</MudSelectItem>
                 <MudSelectItem T="WorkspaceVisibilityInfo" Value="@WorkspaceVisibilityInfo.Public">Public</MudSelectItem>
@@ -133,6 +147,36 @@
 </MudDialog>
 
 @code {
+    private sealed record WorkspaceIconOption(string Value, string Label);
+
+    private static readonly List<WorkspaceIconOption> _iconOptions =
+    [
+        new(Icons.Material.Filled.Folder, "Folder"),
+        new(Icons.Material.Filled.Work, "Work"),
+        new(Icons.Material.Filled.Dashboard, "Dashboard"),
+        new(Icons.Material.Filled.Insights, "Analytics"),
+        new(Icons.Material.Filled.Storage, "Storage"),
+        new(Icons.Material.Filled.DataObject, "Data"),
+        new(Icons.Material.Filled.TableChart, "Tables"),
+        new(Icons.Material.Filled.QueryStats, "Queries"),
+        new(Icons.Material.Filled.Code, "Code"),
+        new(Icons.Material.Filled.Biotech, "Experiments"),
+        new(Icons.Material.Filled.Science, "Science"),
+        new(Icons.Material.Filled.Description, "Docs"),
+        new(Icons.Material.Filled.Assignment, "Tasks"),
+        new(Icons.Material.Filled.Assessment, "Reports"),
+        new(Icons.Material.Filled.DashboardCustomize, "Custom"),
+        new(Icons.Material.Filled.Settings, "Settings"),
+        new(Icons.Material.Filled.Build, "Tools"),
+        new(Icons.Material.Filled.Cloud, "Cloud"),
+        new(Icons.Material.Filled.Language, "Global"),
+        new(Icons.Material.Filled.Api, "API"),
+        new(Icons.Material.Filled.TrendingUp, "Growth"),
+        new(Icons.Material.Filled.ViewKanban, "Board"),
+        new(Icons.Material.Filled.Hub, "Integration"),
+        new(Icons.Material.Filled.AutoGraph, "Models")
+    ];
+
     private List<WorkspaceInfo> _workspaces = new();
     private List<WorkspaceInfo> _folderOptions = new();
     private bool _loading = true;

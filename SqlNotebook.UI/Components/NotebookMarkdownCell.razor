@@ -22,6 +22,10 @@
                 <div class="flex-grow-1"></div>
                 @if (!_collapsed)
                 {
+                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                   Size="Size.Small"
+                                   Title="Copy"
+                                   OnClick="CopyContent" />
                     <MudIconButton Icon="@Icons.Material.Filled.Delete"
                                    Size="Size.Small"
                                    Color="Color.Error"
@@ -43,6 +47,8 @@
     [Parameter, EditorRequired] public NotebookCellInfo Cell { get; set; } = null!;
     [Parameter] public EventCallback<NotebookCellInfo> OnDeleteCell { get; set; }
 
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+
     private bool _collapsed;
 
     private void ToggleCollapsed() => _collapsed = !_collapsed;
@@ -63,6 +69,21 @@
                 return first;
         }
         return "Markdown";
+    }
+
+    private async Task CopyContent()
+    {
+        if (string.IsNullOrWhiteSpace(Cell.Content))
+            return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("sqlNotebookCopyToClipboard", Cell.Content);
+        }
+        catch
+        {
+            // ignore clipboard errors
+        }
     }
 
     private async Task DeleteCell()

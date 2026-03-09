@@ -13,7 +13,9 @@
         var children = AllNodes.Where(x => x.ParentId == Node.Id).OrderBy(x => x.Name).ToList();
         <div class="workspaces-tree-row" style="@($"padding-left: {PaddingLeft}px;")" @onclick="@HandleToggle">
             <span class="material-icons workspaces-tree-icon" aria-hidden="true">@(expanded ? "expand_more" : "chevron_right")</span>
-            <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-primary);" aria-hidden="true">folder</span>
+            <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-primary);" aria-hidden="true">
+                @(!string.IsNullOrWhiteSpace(Node.Icon) ? Node.Icon : "folder")
+            </span>
             <span class="workspaces-tree-name" style="font-weight: 500;">@(Node.Name ?? "Folder")</span>
         </div>
         @if (expanded && children.Count > 0)
@@ -37,7 +39,9 @@
         var expanded = Expanded.Contains(Node.Id);
         <div class="workspaces-tree-row" style="@($"padding-left: {PaddingLeft}px;")" @onclick="@HandleToggle">
             <span class="material-icons workspaces-tree-icon" aria-hidden="true">@(expanded ? "expand_more" : "chevron_right")</span>
-            <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-primary);" aria-hidden="true">folder_open</span>
+            <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-primary);" aria-hidden="true">
+                @(!string.IsNullOrWhiteSpace(Node.Icon) ? Node.Icon : "folder_open")
+            </span>
             <a href="@MainRoutes.GetNotebooksRoute(Node.Id)" class="workspaces-tree-name" @onclick:stopPropagation="true">@(Node.Name ?? "Workspace")</a>
         </div>
         @if (expanded)
