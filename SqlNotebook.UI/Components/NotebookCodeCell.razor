@@ -15,11 +15,39 @@
                 @* Common: collapse *@
                 <MudIconButton Icon="@(_collapsed ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ExpandLess)"
                                Size="Size.Small" Title="@(_collapsed ? "Expand" : "Collapse")" OnClick="ToggleCollapsed" />
-                <MudText Typo="Typo.caption"
-                         Class="ml-2 notebook-cell-title"
-                         Style="max-width: 260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                    @GetTitle()
-                </MudText>
+
+                @if (_editingTitle)
+                {
+                    <MudTextField Value="@_titleEdit"
+                                  ValueChanged="@(EventCallback.Factory.Create<string>(this, OnTitleEditingChanged))"
+                                  Placeholder="Title"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Class="ml-2 notebook-cell-title-input"
+                                  Style="max-width: 260px;"
+                                  Immediate="true" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Check"
+                                   Size="Size.Small"
+                                   Color="Color.Primary"
+                                   Title="Save title"
+                                   OnClick="SaveTitleAsync" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Close"
+                                   Size="Size.Small"
+                                   Title="Cancel"
+                                   OnClick="CancelEditTitle" />
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption"
+                             Class="ml-2 notebook-cell-title"
+                             Style="max-width: 260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        @GetTitle()
+                    </MudText>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                   Size="Size.Small"
+                                   Title="Edit title"
+                                   OnClick="StartEditTitle" />
+                }
                 @if (!string.IsNullOrWhiteSpace(Cell.DatabaseDisplayName))
                 {
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="notebook-cell-db-chip">@Cell.DatabaseDisplayName</MudChip>
@@ -92,23 +120,6 @@
         </div>
         @if (!_collapsed)
         {
-            @if (Cell.ExecutionResult != null && Cell.ExecutionResult.Columns != null && Cell.ExecutionResult.Columns.Length > 0)
-            {
-                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mt-2">
-                    <MudText Typo="Typo.caption">View as:</MudText>
-                    <MudSelect T="string"
-                               Value="@(Cell.ExecutionResult.ChartType ?? "table")"
-                               ValueChanged="(string v) => OnChartTypeChanged.InvokeAsync((Cell.Id, v))"
-                               Variant="Variant.Outlined"
-                               Dense="true"
-                               Style="max-width: 140px;">
-                        <MudSelectItem Value="@("table")">Table</MudSelectItem>
-                        <MudSelectItem Value="@("line")">Line</MudSelectItem>
-                        <MudSelectItem Value="@("bar")">Bar</MudSelectItem>
-                        <MudSelectItem Value="@("pie")">Pie</MudSelectItem>
-                    </MudSelect>
-                </MudStack>
-            }
             <div class="notebook-cell-result-wrap" style="position: relative;">
                 @if (_running || IsExternalRunning)
                 {
@@ -167,6 +178,8 @@
     private ResultViewMode _resultView = ResultViewMode.Table;
 
     private bool _showLineNumbers;
+    private bool _editingTitle;
+    private string? _titleEdit;
 
     private string GetTitle()
     {
@@ -231,6 +244,7 @@
 
     private int _prevCellId = -1;
     private string? _prevContent;
+    private string? _prevTitle;
     private object? _prevExecutionResultRef;
     private string? _prevDatabaseDisplayName;
     private bool _prevRunning;
@@ -241,6 +255,7 @@
     {
         bool cellChanged = Cell.Id != _prevCellId
             || Cell.Content != _prevContent
+            || Cell.Title != _prevTitle
             || !ReferenceEquals(Cell.ExecutionResult, _prevExecutionResultRef)
             || Cell.DatabaseDisplayName != _prevDatabaseDisplayName
             || _running != _prevRunning
@@ -250,6 +265,7 @@
         {
             _prevCellId = Cell.Id;
             _prevContent = Cell.Content;
+            _prevTitle = Cell.Title;
             _prevExecutionResultRef = Cell.ExecutionResult;
             _prevDatabaseDisplayName = Cell.DatabaseDisplayName;
             _prevRunning = _running;
@@ -344,6 +360,38 @@
     {
         _cellError = null;
         await InvokeAsync(StateHasChanged);
+    }
+
+    private void StartEditTitle()
+    {
+        _titleEdit = Cell.Title ?? string.Empty;
+        _editingTitle = true;
+    }
+
+    private void CancelEditTitle()
+    {
+        _editingTitle = false;
+    }
+
+    private void OnTitleEditingChanged(string value)
+    {
+        _titleEdit = value;
+    }
+
+    private async Task SaveTitleAsync()
+    {
+        var newTitle = string.IsNullOrWhiteSpace(_titleEdit) ? null : _titleEdit.Trim();
+        if (Cell.Title == newTitle)
+        {
+            _editingTitle = false;
+            return;
+        }
+
+        Cell.Title = newTitle;
+        _editingTitle = false;
+
+        if (OnCellUpdated.HasDelegate)
+            await OnCellUpdated.InvokeAsync();
     }
 
         private string GetCurrentChartType()

@@ -154,6 +154,7 @@ else if (_loadAttempted)
     private const int NotebookSaveDebounceMs = 1000;
     private bool _runAllBusy;
     private int? _runAllCurrentCellIndex;
+    private bool _scrollToBottomPending;
 
     protected override async Task OnInitializedAsync()
     {
@@ -224,11 +225,24 @@ else if (_loadAttempted)
                 CurrentSqlContext.CurrentSql = t;
             });
             _ = RecentNotebooksService.AddRecentAsync(Id, _notebook.Name ?? "Notebook");
+
+            // After loading an existing notebook, scroll to the last cell
+            if (_notebook.Cells != null && _notebook.Cells.Count > 0)
+            {
+                _scrollToBottomPending = true;
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
     protected override void OnAfterRender(bool firstRender)
     {
+        if (_scrollToBottomPending && _notebook?.Cells != null && _notebook.Cells.Count > 0)
+        {
+            _scrollToBottomPending = false;
+            var lastCell = _notebook.Cells.Last();
+            _ = ScrollToCell(lastCell);
+        }
     }
 
     public void Dispose()
@@ -413,6 +427,8 @@ else if (_loadAttempted)
             _queryRunning = false;
             _runCts?.Dispose();
             _runCts = null;
+            // After executing SQL from the editor, scroll to the bottom (editor + result)
+            _scrollToBottomPending = true;
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -450,6 +466,10 @@ else if (_loadAttempted)
             _notebook.Cells.Add(newCell);
             var updated = await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
             MergeCellIdsFromResponse(updated);
+
+            // Scroll to the new cell created from Markdown SQL run
+            _scrollToBottomPending = true;
+            await InvokeAsync(StateHasChanged);
         }
         catch (OperationCanceledException)
         {
@@ -468,7 +488,7 @@ else if (_loadAttempted)
         }
     }
 
-    private async Task RunQueryAsChart()
+    private async Task RunQueryAsChart(string chartType)
     {
         if (_notebook == null || string.IsNullOrWhiteSpace(_sqlEditorContent) || _queryRunning) return;
         _executionError = null;
@@ -486,15 +506,20 @@ else if (_loadAttempted)
                 _executionError = result.Error ?? "Execution failed.";
                 return;
             }
-            var columns = result.Columns?.Select(c => c.Name).ToList() ?? new List<string>();
-            var rows = result.Rows?.Select(r => r.Values?.ToList() ?? new List<string>()).ToList() ?? new List<List<string>>();
-            var suggestRequest = new SuggestChartRequestInfo { Columns = columns, Rows = rows };
-            var chartType = "line";
-            var suggest = await AiSqlClient.SuggestChartAsync(suggestRequest, _runCts.Token);
-            if (!string.IsNullOrEmpty(suggest?.ChartType))
-                chartType = suggest.ChartType.ToLowerInvariant();
+            var resolvedChartType = chartType?.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(resolvedChartType) || resolvedChartType == "auto")
+            {
+                var columns = result.Columns?.Select(c => c.Name).ToList() ?? new List<string>();
+                var rows = result.Rows?.Select(r => r.Values?.ToList() ?? new List<string>()).ToList() ?? new List<List<string>>();
+                var suggestRequest = new SuggestChartRequestInfo { Columns = columns, Rows = rows };
+                resolvedChartType = "line";
+                var suggest = await AiSqlClient.SuggestChartAsync(suggestRequest, _runCts.Token);
+                if (!string.IsNullOrEmpty(suggest?.ChartType))
+                    resolvedChartType = suggest.ChartType.ToLowerInvariant();
+            }
+
             if (result.Columns != null)
-                result.ChartType = chartType;
+                result.ChartType = resolvedChartType;
             _currentRunResult = result;
         }
         catch (OperationCanceledException)
@@ -510,6 +535,8 @@ else if (_loadAttempted)
             _queryRunning = false;
             _runCts?.Dispose();
             _runCts = null;
+            // After executing SQL as chart from the editor, scroll to the bottom
+            _scrollToBottomPending = true;
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -588,6 +615,9 @@ else if (_loadAttempted)
             _currentRunResult = null;
             _sqlEditorContent = "";
         }
+
+        // After creating a new cell from the editor, scroll to the bottom
+        _scrollToBottomPending = true;
         await InvokeAsync(StateHasChanged);
     }
 
@@ -624,6 +654,9 @@ else if (_loadAttempted)
             _notebook.Cells ??= new List<NotebookCellInfo>();
             _notebook.Cells.Add(newCell);
             _notebook = await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
+
+            // Scroll to the description cell we just added
+            _scrollToBottomPending = true;
             await InvokeAsync(StateHasChanged);
         }
         catch
@@ -645,15 +678,16 @@ else if (_loadAttempted)
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task OnCellChartTypeChanged((int CellId, string ChartType) arg)
+    private Task OnCellChartTypeChanged((int CellId, string ChartType) arg)
     {
-        if (_notebook?.Cells == null) return;
+        if (_notebook?.Cells == null) return Task.CompletedTask;
         var cell = _notebook.Cells.FirstOrDefault(c => c.Id == arg.CellId);
         if (cell?.ExecutionResult != null)
         {
             cell.ExecutionResult.ChartType = arg.ChartType;
-            _notebook = await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
+            _ = ScheduleNotebookSaveDebounced();
         }
+        return Task.CompletedTask;
     }
 
     private async Task OnCellFormat((int CellId, string FormattedContent) arg)

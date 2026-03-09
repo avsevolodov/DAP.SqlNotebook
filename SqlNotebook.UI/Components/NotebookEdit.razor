@@ -5,6 +5,7 @@
 @using DAP.Markdown
 @using DAP.SqlNotebook.Contract.Entities
 @using DAP.SqlNotebook.UI.Helpers
+@using global::SqlNotebook.Mermaid.Components
 @using Microsoft.AspNetCore.Components
 @using Microsoft.JSInterop
 @using MudBlazor
@@ -31,7 +32,8 @@
                                                       OnMoveUp="@(() => MoveCellUp(cellIndex))"
                                                       OnMoveDown="@(() => MoveCellDown(cellIndex))"
                                                       CanMoveUp="@(cellIndex > 0)"
-                                                      CanMoveDown="@(cellIndex < _cellsList.Count - 1)" />
+                                                      CanMoveDown="@(cellIndex < _cellsList.Count - 1)"
+                                                      OnCellUpdated="OnCellUpdated" />
                             }
                             else if (cell.Type == NotebookCellTypeInfo.Sql || cell.Type == NotebookCellTypeInfo.Chart)
                             {
@@ -61,7 +63,8 @@
                                                         OnMoveUp="@(() => MoveCellUp(cellIndex))"
                                                         OnMoveDown="@(() => MoveCellDown(cellIndex))"
                                                         CanMoveUp="@(cellIndex > 0)"
-                                                        CanMoveDown="@(cellIndex < _cellsList.Count - 1)" />
+                                                        CanMoveDown="@(cellIndex < _cellsList.Count - 1)"
+                                                        OnCellUpdated="OnCellUpdated" />
                             }
                             else if (cell.Type == NotebookCellTypeInfo.Mermaid)
                             {
@@ -72,7 +75,8 @@
                                                      OnMoveUp="@(() => MoveCellUp(cellIndex))"
                                                      OnMoveDown="@(() => MoveCellDown(cellIndex))"
                                                      CanMoveUp="@(cellIndex > 0)"
-                                                     CanMoveDown="@(cellIndex < _cellsList.Count - 1)" />
+                                                     CanMoveDown="@(cellIndex < _cellsList.Count - 1)"
+                                                     OnCellUpdated="OnCellUpdated" />
                             }
                         </div>
                     </div>
@@ -84,62 +88,142 @@
     @* Toolbar + Editor *@
     <MudPaper Class="pa-3" Elevation="1" Outlined="true">
         <MudStack Spacing="2">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap">
-                <MudButton Variant="@(_activeEditor == EditorMode.Sql ? Variant.Filled : Variant.Outlined)"
-                           Color="Color.Primary"
-                           OnClick="@(() => SetEditorMode(EditorMode.Sql))"
-                           StartIcon="@Icons.Material.Filled.Code">
-                    SQL
-                </MudButton>
-                <MudButton Variant="@(_activeEditor == EditorMode.Markdown ? Variant.Filled : Variant.Outlined)"
-                           Color="Color.Primary"
-                           OnClick="@(() => SetEditorMode(EditorMode.Markdown))"
-                           StartIcon="@Icons.Material.Filled.TextFields">
-                    Markdown
-                </MudButton>
-                <MudButton Variant="@(_activeEditor == EditorMode.Diagram ? Variant.Filled : Variant.Outlined)"
-                           Color="Color.Primary"
-                           OnClick="@(() => SetEditorMode(EditorMode.Diagram))"
-                           StartIcon="@Icons.Material.Filled.AccountTree">
-                    Diagram
-                </MudButton>
-                <MudButton Variant="@(_activeEditor == EditorMode.Excalidraw ? Variant.Filled : Variant.Outlined)"
-                           Color="Color.Primary"
-                           OnClick="@(() => SetEditorMode(EditorMode.Excalidraw))"
-                           StartIcon="@Icons.Material.Filled.Gesture">
-                    Excalidraw
-                </MudButton>
-                @if (_activeEditor == EditorMode.Sql)
-                {
-                    @if (IsQueryRunning)
+            <MudStack Row="true"
+                      AlignItems="AlignItems.Center"
+                      Spacing="2"
+                      Wrap="Wrap.Wrap"
+                      Justify="Justify.SpaceBetween">
+                @* Editor type buttons (left) *@
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Wrap="Wrap.Wrap">
+                    <MudButton Variant="@(_activeEditor == EditorMode.Sql ? Variant.Filled : Variant.Outlined)"
+                               Color="Color.Primary"
+                               OnClick="@(() => SetEditorMode(EditorMode.Sql))"
+                               StartIcon="@Icons.Material.Filled.Code">
+                        SQL
+                    </MudButton>
+                    <MudButton Variant="@(_activeEditor == EditorMode.Markdown ? Variant.Filled : Variant.Outlined)"
+                               Color="Color.Primary"
+                               OnClick="@(() => SetEditorMode(EditorMode.Markdown))"
+                               StartIcon="@Icons.Material.Filled.TextFields">
+                        Markdown
+                    </MudButton>
+                    <MudButton Variant="@(_activeEditor == EditorMode.Diagram ? Variant.Filled : Variant.Outlined)"
+                               Color="Color.Primary"
+                               OnClick="@(() => SetEditorMode(EditorMode.Diagram))"
+                               StartIcon="@Icons.Material.Filled.AccountTree">
+                        Diagram
+                    </MudButton>
+                    <MudButton Variant="@(_activeEditor == EditorMode.Excalidraw ? Variant.Filled : Variant.Outlined)"
+                               Color="Color.Primary"
+                               OnClick="@(() => SetEditorMode(EditorMode.Excalidraw))"
+                               StartIcon="@Icons.Material.Filled.Gesture">
+                        Excalidraw
+                    </MudButton>
+                </MudStack>
+
+                @* Per-editor toolbar (right) *@
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Wrap="Wrap.Wrap">
+                    @if (_activeEditor == EditorMode.Sql)
                     {
-                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Style="width:24px; height:24px;" />
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">Running…</MudText>
-                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="HandleCancelRun" StartIcon="@Icons.Material.Filled.Stop">Cancel</MudButton>
+                        @if (IsQueryRunning)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Style="width:24px; height:24px;" />
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Running…</MudText>
+                            <MudIconButton Icon="@Icons.Material.Filled.Stop"
+                                           Color="Color.Secondary"
+                                           Title="Cancel"
+                                           OnClick="HandleCancelRun" />
+                        }
+                        else
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.PlayArrow"
+                                           Color="Color.Primary"
+                                           Title="Run query"
+                                           OnClick="HandleRun" />
+
+                            @* Run as specific chart types *@
+                            <MudIconButton Icon="@Icons.Material.Filled.ShowChart"
+                                           Color="@(IsCurrentResultChartSelected("line") ? Color.Primary : Color.Default)"
+                                           Title="Run as line chart"
+                                           OnClick="HandleRunAsLineChart" />
+                            <MudIconButton Icon="@Icons.Material.Filled.BarChart"
+                                           Color="@(IsCurrentResultChartSelected("bar") ? Color.Primary : Color.Default)"
+                                           Title="Run as bar chart"
+                                           OnClick="HandleRunAsBarChart" />
+                            <MudIconButton Icon="@Icons.Material.Filled.PieChart"
+                                           Color="@(IsCurrentResultChartSelected("pie") ? Color.Primary : Color.Default)"
+                                           Title="Run as pie chart"
+                                           OnClick="HandleRunAsPieChart" />
+
+                            <MudIconButton Icon="@Icons.Material.Filled.FormatAlignLeft"
+                                           Title="Format SQL"
+                                           OnClick="HandleFormatSql" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Save"
+                                           Color="Color.Primary"
+                                           Title="Save cell"
+                                           OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Sql))" />
+                        }
+
+                        <MudIconButton Icon="@Icons.Material.Filled.Clear"
+                                       Color="Color.Error"
+                                       Title="Clear editor"
+                                       OnClick="HandleClearEditor" />
                     }
-                    else
+                    else if (_activeEditor == EditorMode.Markdown)
                     {
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleRun" StartIcon="@Icons.Material.Filled.PlayArrow">Run</MudButton>
-                        <MudButton Variant="Variant.Outlined" OnClick="HandleFormatSql" StartIcon="@Icons.Material.Filled.FormatAlignLeft" Title="Format SQL">Format</MudButton>
+                        <MudIconButton Icon="@Icons.Material.Filled.Save"
+                                       Color="Color.Primary"
+                                       Title="Save cell"
+                                       OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Markdown))" />
+
+                        <MudIconButton Icon="@Icons.Material.Filled.Clear"
+                                       Color="Color.Error"
+                                       Title="Clear editor"
+                                       OnClick="HandleClearEditor" />
                     }
-                }
-                <MudMenu Open="_settingsOpen" OpenChanged="e => _settingsOpen = e" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
-                    <ActivatorContent>
-                        <MudIconButton Icon="@Icons.Material.Filled.Settings" Title="Editor settings" OnClick="@(() => _settingsOpen = true)" />
-                    </ActivatorContent>
-                    <ChildContent>
-                        <MudPaper Class="pa-3" Style="min-width: 200px;">
-                            <MudText Typo="Typo.subtitle2" Class="mb-2">Editor settings</MudText>
-                            <MudSelect T="string" Label="Theme" Value="@_editorTheme" ValueChanged="OnEditorThemeChanged" Variant="Variant.Outlined" Dense="true" Class="mt-2">
-                                <MudSelectItem Value="@("vs-dark")">Dark</MudSelectItem>
-                                <MudSelectItem Value="@("vs")">Light</MudSelectItem>
-                                <MudSelectItem Value="@("hc-black")">High contrast</MudSelectItem>
-                            </MudSelect>
-                            <MudNumericField T="int?" Value="_timeoutLocal" ValueChanged="OnTimeoutChanged" Label="Timeout (s)" Min="1" Max="300" Variant="Variant.Outlined" Dense="true" Class="mt-2" Style="max-width: 100%;" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Timer" Disabled="@IsQueryRunning" />
-                            <MudNumericField T="int" Value="_selectTopLocal" ValueChanged="OnSelectTopChanged" Label="TOP (rows)" Min="1" Max="10000" Variant="Variant.Outlined" Dense="true" Class="mt-2" Style="max-width: 100%;" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.TableChart" Disabled="@IsQueryRunning" />
-                        </MudPaper>
-                    </ChildContent>
-                </MudMenu>
+                    else if (_activeEditor == EditorMode.Diagram)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Save"
+                                       Color="Color.Primary"
+                                       Title="Save cell"
+                                       OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Mermaid))" />
+
+                        <MudIconButton Icon="@Icons.Material.Filled.Clear"
+                                       Color="Color.Error"
+                                       Title="Clear editor"
+                                       OnClick="HandleClearEditor" />
+                    }
+                    else if (_activeEditor == EditorMode.Excalidraw)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Save"
+                                       Color="Color.Primary"
+                                       Title="Save cell"
+                                       OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Excalidraw))" />
+
+                        <MudIconButton Icon="@Icons.Material.Filled.Clear"
+                                       Color="Color.Error"
+                                       Title="Clear editor"
+                                       OnClick="HandleClearEditor" />
+                    }
+
+                    <MudMenu Open="_settingsOpen" OpenChanged="e => _settingsOpen = e" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                        <ActivatorContent>
+                            <MudIconButton Icon="@Icons.Material.Filled.Settings" Title="Editor settings" OnClick="@(() => _settingsOpen = true)" />
+                        </ActivatorContent>
+                        <ChildContent>
+                            <MudPaper Class="pa-3" Style="min-width: 200px;">
+                                <MudText Typo="Typo.subtitle2" Class="mb-2">Editor settings</MudText>
+                                <MudSelect T="string" Label="Theme" Value="@_editorTheme" ValueChanged="OnEditorThemeChanged" Variant="Variant.Outlined" Dense="true" Class="mt-2">
+                                    <MudSelectItem Value="@("vs-dark")">Dark</MudSelectItem>
+                                    <MudSelectItem Value="@("vs")">Light</MudSelectItem>
+                                    <MudSelectItem Value="@("hc-black")">High contrast</MudSelectItem>
+                                </MudSelect>
+                                <MudNumericField T="int?" Value="_timeoutLocal" ValueChanged="OnTimeoutChanged" Label="Timeout (s)" Min="1" Max="300" Variant="Variant.Outlined" Dense="true" Class="mt-2" Style="max-width: 100%;" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Timer" Disabled="@IsQueryRunning" />
+                                <MudNumericField T="int" Value="_selectTopLocal" ValueChanged="OnSelectTopChanged" Label="TOP (rows)" Min="1" Max="10000" Variant="Variant.Outlined" Dense="true" Class="mt-2" Style="max-width: 100%;" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.TableChart" Disabled="@IsQueryRunning" />
+                            </MudPaper>
+                        </ChildContent>
+                    </MudMenu>
+                </MudStack>
             </MudStack>
             @if (!string.IsNullOrWhiteSpace(ExecutionError))
             {
@@ -151,33 +235,6 @@
             {
                 <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">New SQL cell</MudText>
                 <div id="@_editorElementId" class="sql-notebook-editor-container"></div>
-                <MudStack Row="true" Spacing="1" Class="mt-2" AlignItems="AlignItems.Center">
-                    <MudButton Variant="Variant.Filled"
-                               Color="Color.Primary"
-                               StartIcon="@Icons.Material.Filled.Save"
-                               OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Sql))">
-                        Save cell
-                    </MudButton>
-                    <MudMenu Open="_addCellMenuOpen"
-                             OpenChanged="e => _addCellMenuOpen = e"
-                             AnchorOrigin="Origin.BottomLeft"
-                             TransformOrigin="Origin.TopLeft">
-                        <ActivatorContent>
-                            <MudButton Variant="Variant.Outlined"
-                                       Color="Color.Default"
-                                       StartIcon="@Icons.Material.Filled.Add"
-                                       OnClick="@(() => _addCellMenuOpen = true)">
-                                Add new cell
-                            </MudButton>
-                        </ActivatorContent>
-                        <ChildContent>
-                            <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Sql))" Icon="@Icons.Material.Filled.Code">SQL</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Markdown))" Icon="@Icons.Material.Filled.TextFields">Markdown</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Mermaid))" Icon="@Icons.Material.Filled.AccountTree">Diagram</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Excalidraw))" Icon="@Icons.Material.Filled.Gesture">Excalidraw</MudMenuItem>
-                        </ChildContent>
-                    </MudMenu>
-                </MudStack>
                 @if (CurrentRunResult != null)
                 {
                     <div class="notebook-current-result mt-3">
@@ -186,26 +243,24 @@
                             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
                                 <MudIconButton Icon="@Icons.Material.Filled.TableChart"
                                                Size="Size.Small"
-                                               Color="@(_currentResultView == ResultViewMode.Table ? Color.Primary : Color.Default)"
+                                               Color="@(IsCurrentResultChartSelected("table") ? Color.Primary : Color.Default)"
                                                Title="Table view"
-                                               OnClick="@(() => _currentResultView = ResultViewMode.Table)" />
+                                               OnClick="SetCurrentResultChartTypeTable" />
+                                <MudIconButton Icon="@Icons.Material.Filled.ShowChart"
+                                               Size="Size.Small"
+                                               Color="@(IsCurrentResultChartSelected("line") ? Color.Primary : Color.Default)"
+                                               Title="Line chart"
+                                               OnClick="SetCurrentResultChartTypeLine" />
                                 <MudIconButton Icon="@Icons.Material.Filled.BarChart"
                                                Size="Size.Small"
-                                               Color="@(_currentResultView == ResultViewMode.Charts ? Color.Primary : Color.Default)"
-                                               Title="Charts view"
-                                               OnClick="@(() => _currentResultView = ResultViewMode.Charts)" />
-                                <MudText Typo="Typo.caption" Class="ml-2">View as:</MudText>
-                                <MudSelect T="string"
-                                           Value="@(_currentResultChartType ?? (CurrentRunResult.ChartType ?? "table"))"
-                                           ValueChanged="OnCurrentResultChartTypeChanged"
-                                           Variant="Variant.Outlined"
-                                           Dense="true"
-                                           Style="max-width: 140px;">
-                                    <MudSelectItem Value="@("table")">Table</MudSelectItem>
-                                    <MudSelectItem Value="@("line")">Line</MudSelectItem>
-                                    <MudSelectItem Value="@("bar")">Bar</MudSelectItem>
-                                    <MudSelectItem Value="@("pie")">Pie</MudSelectItem>
-                                </MudSelect>
+                                               Color="@(IsCurrentResultChartSelected("bar") ? Color.Primary : Color.Default)"
+                                               Title="Bar chart"
+                                               OnClick="SetCurrentResultChartTypeBar" />
+                                <MudIconButton Icon="@Icons.Material.Filled.PieChart"
+                                               Size="Size.Small"
+                                               Color="@(IsCurrentResultChartSelected("pie") ? Color.Primary : Color.Default)"
+                                               Title="Pie chart"
+                                               OnClick="SetCurrentResultChartTypePie" />
                             </MudStack>
                         }
                         <NotebookQueryResult Result="@CurrentRunResult"
@@ -217,80 +272,53 @@
             else if (_activeEditor == EditorMode.Markdown)
             {
                 <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">New Markdown cell</MudText>
-                <MudTextField Lines="10"
-                              Value="@(SqlEditorContent ?? string.Empty)"
-                              ValueChanged="SqlEditorContentChanged"
-                              Immediate="true"
-                              Label="Markdown content"
-                              Variant="Variant.Outlined"
-                              FullWidth="true"
-                              Textarea="true" />
-                <MudStack Row="true" Spacing="1" Class="mt-2" AlignItems="AlignItems.Center">
-                    <MudButton Variant="Variant.Filled"
-                               Color="Color.Primary"
-                               StartIcon="@Icons.Material.Filled.Save"
-                               OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Markdown))">
-                        Save cell
-                    </MudButton>
-                    <MudMenu Open="_addCellMenuOpen"
-                             OpenChanged="e => _addCellMenuOpen = e"
-                             AnchorOrigin="Origin.BottomLeft"
-                             TransformOrigin="Origin.TopLeft">
-                        <ActivatorContent>
-                            <MudButton Variant="Variant.Outlined"
-                                       Color="Color.Default"
-                                       StartIcon="@Icons.Material.Filled.Add"
-                                       OnClick="@(() => _addCellMenuOpen = true)">
-                                Add new cell
-                            </MudButton>
-                        </ActivatorContent>
-                        <ChildContent>
-                            <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Sql))" Icon="@Icons.Material.Filled.Code">SQL</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Markdown))" Icon="@Icons.Material.Filled.TextFields">Markdown</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Mermaid))" Icon="@Icons.Material.Filled.AccountTree">Diagram</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Excalidraw))" Icon="@Icons.Material.Filled.Gesture">Excalidraw</MudMenuItem>
-                        </ChildContent>
-                    </MudMenu>
-                </MudStack>
+                <MudGrid GutterSize="GutterSize.Small">
+                    <MudItem xs="12" md="6">
+                        <MudTextField Lines="10"
+                                      Value="@(SqlEditorContent ?? string.Empty)"
+                                      ValueChanged="SqlEditorContentChanged"
+                                      Immediate="true"
+                                      Label="Markdown content"
+                                      Variant="Variant.Outlined"
+                                      FullWidth="true"
+                                      Textarea="true" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">Preview</MudText>
+                        <MudPaper Class="pa-2" Elevation="0" Style="max-height: 300px; overflow:auto;">
+                            <MudMarkdown Value="@(SqlEditorContent ?? string.Empty)" Props="GetMarkdownProps()" />
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
             }
             else if (_activeEditor == EditorMode.Diagram)
             {
                 <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">New Diagram cell (Mermaid)</MudText>
-                <MudTextField Lines="10"
-                              Value="@(SqlEditorContent ?? string.Empty)"
-                              ValueChanged="SqlEditorContentChanged"
-                              Immediate="true"
-                              Label="Mermaid diagram definition"
-                              Variant="Variant.Outlined"
-                              FullWidth="true"
-                              Textarea="true" />
-                <MudStack Row="true" Spacing="1" Class="mt-2" AlignItems="AlignItems.Center">
-                    <MudButton Variant="Variant.Filled"
-                               Color="Color.Primary"
-                               StartIcon="@Icons.Material.Filled.Save"
-                               OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Mermaid))">
-                        Save cell
-                    </MudButton>
-                    <MudMenu Open="_addCellMenuOpen"
-                             OpenChanged="e => _addCellMenuOpen = e"
-                             AnchorOrigin="Origin.BottomLeft"
-                             TransformOrigin="Origin.TopLeft">
-                        <ActivatorContent>
-                            <MudButton Variant="Variant.Outlined"
-                                       Color="Color.Default"
-                                       StartIcon="@Icons.Material.Filled.Add"
-                                       OnClick="@(() => _addCellMenuOpen = true)">
-                                Add new cell
-                            </MudButton>
-                        </ActivatorContent>
-                        <ChildContent>
-                            <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Sql))" Icon="@Icons.Material.Filled.Code">SQL</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Markdown))" Icon="@Icons.Material.Filled.TextFields">Markdown</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Mermaid))" Icon="@Icons.Material.Filled.AccountTree">Diagram</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Excalidraw))" Icon="@Icons.Material.Filled.Gesture">Excalidraw</MudMenuItem>
-                        </ChildContent>
-                    </MudMenu>
-                </MudStack>
+                <MudGrid GutterSize="GutterSize.Small">
+                    <MudItem xs="12" md="6">
+                        <MudTextField Lines="10"
+                                      Value="@(SqlEditorContent ?? string.Empty)"
+                                      ValueChanged="SqlEditorContentChanged"
+                                      Immediate="true"
+                                      Label="Mermaid diagram definition"
+                                      Variant="Variant.Outlined"
+                                      FullWidth="true"
+                                      Textarea="true" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">Preview</MudText>
+                        @if (!string.IsNullOrWhiteSpace(SqlEditorContent))
+                        {
+                            <MudPaper Class="pa-2" Elevation="0" Style="max-height: 300px; overflow:auto;">
+                                <MermaidDiagram Text="@(SqlEditorContent ?? string.Empty)" CssClass="mermaid-cell-diagram" />
+                            </MudPaper>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Enter Mermaid code to see preview.</MudText>
+                        }
+                    </MudItem>
+                </MudGrid>
             }
             else if (_activeEditor == EditorMode.Excalidraw)
             {
@@ -302,34 +330,17 @@
                             style="width: 100%; height: 100%; border: 1px solid var(--mud-palette-lines-default); border-radius: 4px; pointer-events: auto;"
                             @onload="HandleExcalidrawEditorLoad" />
                 </div>
-                <MudStack Row="true" Spacing="1" Class="mt-2" AlignItems="AlignItems.Center">
-                    <MudButton Variant="Variant.Filled"
-                               Color="Color.Primary"
-                               StartIcon="@Icons.Material.Filled.Save"
-                               OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Excalidraw))">
-                        Save cell
-                    </MudButton>
-                    <MudMenu Open="_addCellMenuOpen"
-                             OpenChanged="e => _addCellMenuOpen = e"
-                             AnchorOrigin="Origin.BottomLeft"
-                             TransformOrigin="Origin.TopLeft">
-                        <ActivatorContent>
-                            <MudButton Variant="Variant.Outlined"
-                                       Color="Color.Default"
-                                       StartIcon="@Icons.Material.Filled.Add"
-                                       OnClick="@(() => _addCellMenuOpen = true)">
-                                Add new cell
-                            </MudButton>
-                        </ActivatorContent>
-                        <ChildContent>
-                            <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Sql))" Icon="@Icons.Material.Filled.Code">SQL</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Markdown))" Icon="@Icons.Material.Filled.TextFields">Markdown</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Mermaid))" Icon="@Icons.Material.Filled.AccountTree">Diagram</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Excalidraw))" Icon="@Icons.Material.Filled.Gesture">Excalidraw</MudMenuItem>
-                        </ChildContent>
-                    </MudMenu>
-                </MudStack>
             }
+
+            @* Bottom "Add cell" button for the editor *@
+            <MudStack Row="true" Spacing="1" Class="mt-3" AlignItems="AlignItems.Center">
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="HandleAddCurrentEditorCell">
+                    Add cell
+                </MudButton>
+            </MudStack>
         </MudStack>
     </MudPaper>
 </div>
@@ -349,7 +360,7 @@
     [Parameter] public EventCallback OnCancelRun { get; set; }
     [Parameter] public EventCallback OnRun { get; set; }
     [Parameter] public EventCallback<string> OnRunSqlFromMarkdown { get; set; }
-    [Parameter] public EventCallback OnRunAsChart { get; set; }
+    [Parameter] public EventCallback<string> OnRunAsChart { get; set; }
     [Parameter] public EventCallback<NotebookCellTypeInfo> OnAddCell { get; set; }
     [Parameter] public EventCallback<string> OnInsertIntoEditor { get; set; }
     [Parameter] public string? ExecutionError { get; set; }
@@ -378,7 +389,6 @@
     private int _createRetryCount;
     private const int MaxCreateRetries = 25;
     private bool _settingsOpen;
-    private bool _addCellMenuOpen;
     private string _editorTheme = "vs-dark";
     private int _lastCellCount = -1;
     private MudMarkdownProps? _cachedMarkdownProps;
@@ -396,15 +406,6 @@
     private EditorMode _activeEditor = EditorMode.Sql;
     private string _excalidrawEditorIframeId = "excalidraw-editor";
 
-    private void OnCurrentResultChartTypeChanged(string value)
-    {
-        _currentResultChartType = value;
-        if (CurrentRunResult != null)
-        {
-            CurrentRunResult.ChartType = value;
-        }
-    }
-
     protected override void OnParametersSet()
     {
         if (QueryTimeoutSeconds != _timeoutLocal)
@@ -413,6 +414,16 @@
         {
             _selectTopLocal = SelectTopCount;
             CatalogInsertService.SelectTopCount = SelectTopCount;
+        }
+
+        // Sync current result view & chart type with incoming result
+        if (CurrentRunResult != null)
+        {
+            var ct = (CurrentRunResult.ChartType ?? string.Empty).Trim().ToLowerInvariant();
+            _currentResultChartType = string.IsNullOrEmpty(ct) ? null : ct;
+            _currentResultView = string.IsNullOrEmpty(ct) || ct == "table"
+                ? ResultViewMode.Table
+                : ResultViewMode.Charts;
         }
     }
 
@@ -578,15 +589,64 @@
         _activeEditor = mode;
     }
 
-    private async Task HandleRunAsChart()
+    private async Task HandleRunAsChart(string chartType)
     {
+        // When running as chart from the editor toolbar, switch result view and chart type
+        SetCurrentResultChartType(chartType);
+
         await FlushEditorContent();
-        await OnRunAsChart.InvokeAsync();
+        if (OnRunAsChart.HasDelegate)
+        {
+            await OnRunAsChart.InvokeAsync(chartType);
+        }
     }
+
+    private Task HandleRunAsLineChart() => HandleRunAsChart("line");
+    private Task HandleRunAsBarChart() => HandleRunAsChart("bar");
+    private Task HandleRunAsPieChart() => HandleRunAsChart("pie");
+
+    private string GetCurrentResultChartType()
+    {
+        return (_currentResultChartType ?? string.Empty).Trim().ToLowerInvariant();
+    }
+
+    private bool IsCurrentResultChartSelected(string chartType)
+    {
+        var current = GetCurrentResultChartType();
+        if (string.IsNullOrEmpty(current) && chartType == "table")
+            return _currentResultView == ResultViewMode.Table;
+        if (string.IsNullOrEmpty(current) && chartType == "line")
+            return _currentResultView == ResultViewMode.Charts;
+        return current == chartType;
+    }
+
+    private void SetCurrentResultChartType(string chartType)
+    {
+        var ct = (chartType ?? string.Empty).Trim().ToLowerInvariant();
+
+        if (ct == "table" || string.IsNullOrEmpty(ct))
+        {
+            _currentResultView = ResultViewMode.Table;
+            _currentResultChartType = null;
+            if (CurrentRunResult != null)
+                CurrentRunResult.ChartType = null;
+        }
+        else
+        {
+            _currentResultView = ResultViewMode.Charts;
+            _currentResultChartType = ct;
+            if (CurrentRunResult != null)
+                CurrentRunResult.ChartType = ct;
+        }
+    }
+
+    private void SetCurrentResultChartTypeTable() => SetCurrentResultChartType("table");
+    private void SetCurrentResultChartTypeLine() => SetCurrentResultChartType("line");
+    private void SetCurrentResultChartTypeBar() => SetCurrentResultChartType("bar");
+    private void SetCurrentResultChartTypePie() => SetCurrentResultChartType("pie");
 
     private async Task HandleAddCell(NotebookCellTypeInfo cellType)
     {
-        _addCellMenuOpen = false;
         await FlushEditorContent();
         if (OnAddCell.HasDelegate)
         {
@@ -623,6 +683,59 @@
     {
         if (OnCancelRun.HasDelegate)
             await OnCancelRun.InvokeAsync();
+    }
+
+    private async Task HandleClearEditor()
+    {
+        // "Delete" only the editor cell: clear its content, do not touch existing notebook cells.
+        if (_activeEditor == EditorMode.Sql)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("sqlNotebookMonaco.setValue", _editorElementId, string.Empty);
+            }
+            catch
+            {
+                // ignore JS errors
+            }
+
+            _lastSetContent = string.Empty;
+            await SqlEditorContentChanged.InvokeAsync(string.Empty);
+            return;
+        }
+
+        if (_activeEditor == EditorMode.Excalidraw)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("sqlNotebookExcalidraw.sendContent", _excalidrawEditorIframeId, "{}");
+                if (OnExcalidrawEditorContentChanged.HasDelegate)
+                    await OnExcalidrawEditorContentChanged.InvokeAsync(null);
+            }
+            catch
+            {
+                // Ignore errors while clearing the editor (e.g. when not visible)
+            }
+        }
+        else
+        {
+            _lastSetContent = string.Empty;
+            await SqlEditorContentChanged.InvokeAsync(string.Empty);
+        }
+    }
+
+    private Task HandleAddCurrentEditorCell()
+    {
+        var cellType = _activeEditor switch
+        {
+            EditorMode.Sql => NotebookCellTypeInfo.Sql,
+            EditorMode.Markdown => NotebookCellTypeInfo.Markdown,
+            EditorMode.Diagram => NotebookCellTypeInfo.Mermaid,
+            EditorMode.Excalidraw => NotebookCellTypeInfo.Excalidraw,
+            _ => NotebookCellTypeInfo.Sql
+        };
+
+        return HandleAddCell(cellType);
     }
 
     private async Task FlushEditorContent()

@@ -11,11 +11,39 @@
                            Size="Size.Small"
                            Title="@(_collapsed ? "Expand" : "Collapse")"
                            OnClick="ToggleCollapsed" />
-            <MudText Typo="Typo.caption"
-                     Class="ml-2 notebook-cell-title"
-                     Style="max-width: 260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                @GetTitle()
-            </MudText>
+
+            @if (_editingTitle)
+            {
+                <MudTextField Value="@_titleEdit"
+                              ValueChanged="@(EventCallback.Factory.Create<string>(this, OnTitleEditingChanged))"
+                              Placeholder="Title"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Class="ml-2 notebook-cell-title-input"
+                              Style="max-width: 260px;"
+                              Immediate="true" />
+                <MudIconButton Icon="@Icons.Material.Filled.Check"
+                               Size="Size.Small"
+                               Color="Color.Primary"
+                               Title="Save title"
+                               OnClick="SaveTitleAsync" />
+                <MudIconButton Icon="@Icons.Material.Filled.Close"
+                               Size="Size.Small"
+                               Title="Cancel"
+                               OnClick="CancelEditTitle" />
+            }
+            else
+            {
+                <MudText Typo="Typo.caption"
+                         Class="ml-2 notebook-cell-title"
+                         Style="max-width: 260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    @GetTitle()
+                </MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                               Size="Size.Small"
+                               Title="Edit title"
+                               OnClick="StartEditTitle" />
+            }
             <MudText Typo="Typo.caption" Color="Color.Secondary">Mermaid — diagram</MudText>
             <MudIconButton Icon="@Icons.Material.Filled.Save"
                            Size="Size.Small"
@@ -59,13 +87,16 @@
     [Parameter] public EventCallback OnMoveDown { get; set; }
     [Parameter] public bool CanMoveUp { get; set; }
     [Parameter] public bool CanMoveDown { get; set; }
+    [Parameter] public EventCallback OnCellUpdated { get; set; }
 
     private bool _collapsed;
     private bool _isDirty;
+    private bool _editingTitle;
+    private string? _titleEdit;
 
     private void ToggleCollapsed() => _collapsed = !_collapsed;
 
-    private async Task HandleContentChanged(string value)
+    private void HandleContentChanged(string value)
     {
         Cell.Content = value ?? "";
         _isDirty = true;
@@ -120,5 +151,37 @@
                 return firstLine;
         }
         return "Mermaid";
+    }
+
+    private void StartEditTitle()
+    {
+        _titleEdit = Cell.Title ?? string.Empty;
+        _editingTitle = true;
+    }
+
+    private void CancelEditTitle()
+    {
+        _editingTitle = false;
+    }
+
+    private void OnTitleEditingChanged(string value)
+    {
+        _titleEdit = value;
+    }
+
+    private async Task SaveTitleAsync()
+    {
+        var newTitle = string.IsNullOrWhiteSpace(_titleEdit) ? null : _titleEdit.Trim();
+        if (Cell.Title == newTitle)
+        {
+            _editingTitle = false;
+            return;
+        }
+
+        Cell.Title = newTitle;
+        _editingTitle = false;
+
+        if (OnCellUpdated.HasDelegate)
+            await OnCellUpdated.InvokeAsync();
     }
 }

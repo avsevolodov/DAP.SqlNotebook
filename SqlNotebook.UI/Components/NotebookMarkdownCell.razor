@@ -14,11 +14,39 @@
                                Size="Size.Small"
                                Title="@(_collapsed ? "Expand" : "Collapse")"
                                OnClick="ToggleCollapsed" />
-                <MudText Typo="Typo.caption"
-                         Class="ml-2 notebook-cell-title"
-                         Style="max-width: 260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                    @GetTitle()
-                </MudText>
+
+                @if (_editingTitle)
+                {
+                    <MudTextField Value="@_titleEdit"
+                                  ValueChanged="@(EventCallback.Factory.Create<string>(this, OnTitleEditingChanged))"
+                                  Placeholder="Title"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Class="ml-2 notebook-cell-title-input"
+                                  Style="max-width: 260px;"
+                                  Immediate="true" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Check"
+                                   Size="Size.Small"
+                                   Color="Color.Primary"
+                                   Title="Save title"
+                                   OnClick="SaveTitleAsync" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Close"
+                                   Size="Size.Small"
+                                   Title="Cancel"
+                                   OnClick="CancelEditTitle" />
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption"
+                             Class="ml-2 notebook-cell-title"
+                             Style="max-width: 260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        @GetTitle()
+                    </MudText>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                   Size="Size.Small"
+                                   Title="Edit title"
+                                   OnClick="StartEditTitle" />
+                }
                 <div class="flex-grow-1"></div>
                 @if (!_collapsed)
                 {
@@ -65,10 +93,13 @@
     [Parameter] public EventCallback OnMoveDown { get; set; }
     [Parameter] public bool CanMoveUp { get; set; }
     [Parameter] public bool CanMoveDown { get; set; }
+    [Parameter] public EventCallback OnCellUpdated { get; set; }
 
     [Inject] private IJSRuntime JS { get; set; } = null!;
 
     private bool _collapsed;
+    private bool _editingTitle;
+    private string? _titleEdit;
 
     private void ToggleCollapsed() => _collapsed = !_collapsed;
 
@@ -127,6 +158,38 @@
     {
         if (OnDeleteCell.HasDelegate)
             await OnDeleteCell.InvokeAsync(Cell);
+    }
+
+    private void StartEditTitle()
+    {
+        _titleEdit = Cell.Title ?? string.Empty;
+        _editingTitle = true;
+    }
+
+    private void CancelEditTitle()
+    {
+        _editingTitle = false;
+    }
+
+    private void OnTitleEditingChanged(string value)
+    {
+        _titleEdit = value;
+    }
+
+    private async Task SaveTitleAsync()
+    {
+        var newTitle = string.IsNullOrWhiteSpace(_titleEdit) ? null : _titleEdit.Trim();
+        if (Cell.Title == newTitle)
+        {
+            _editingTitle = false;
+            return;
+        }
+
+        Cell.Title = newTitle;
+        _editingTitle = false;
+
+        if (OnCellUpdated.HasDelegate)
+            await OnCellUpdated.InvokeAsync();
     }
 }
 
