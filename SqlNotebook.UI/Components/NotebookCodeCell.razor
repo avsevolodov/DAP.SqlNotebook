@@ -28,7 +28,7 @@
                 @* Type-specific: Run, Copy, Paste to editor; Chart type (SQL only); Move/Copy cell; Delete on the right *@
                 @if (!_collapsed)
                 {
-                    <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" Title="Run" OnClick="RunCell" Disabled="@_running" />
+                    <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" Title="Run" OnClick="RunCell" Disabled="@(_running || IsExternalRunning)" />
                     <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Title="Copy" OnClick="@(() => CopyContent(Cell.Content))" />
                     <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Title="Paste to editor" OnClick="@(() => PasteToEditor(Cell.Content))" />
                     <MudIconButton Icon="@Icons.Material.Filled.FormatAlignLeft" Size="Size.Small" Title="Format" OnClick="@(() => FormatCell())" />
@@ -110,12 +110,15 @@
                 </MudStack>
             }
             <div class="notebook-cell-result-wrap" style="position: relative;">
-                @if (_running)
+                @if (_running || IsExternalRunning)
                 {
                     <div class="notebook-cell-result-overlay">
                         <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
                         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">Running…</MudText>
-                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" Class="mt-2" StartIcon="@Icons.Material.Filled.Stop" OnClick="CancelRun">Cancel</MudButton>
+                        @if (_running)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" Class="mt-2" StartIcon="@Icons.Material.Filled.Stop" OnClick="CancelRun">Cancel</MudButton>
+                        }
                     </div>
                 }
                 @if (!string.IsNullOrWhiteSpace(_cellError))
@@ -145,6 +148,7 @@
     [Parameter] public EventCallback OnMoveDown { get; set; }
     [Parameter] public bool CanMoveUp { get; set; }
     [Parameter] public bool CanMoveDown { get; set; }
+    [Parameter] public bool IsExternalRunning { get; set; }
 
     [Inject] private INotebookManager NotebookManager { get; set; } = null!;
     [Inject] private IJSRuntime JS { get; set; } = null!;

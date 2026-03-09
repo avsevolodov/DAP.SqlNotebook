@@ -31,7 +31,9 @@
     {
         <NotebookToc Cells="@(_notebook.Cells.ToList())"
                      OnCellSelect="OnCellSelect"
-                     ShowAddButton="false" />
+                     ShowAddButton="false"
+                     IsRunAllRunning="_isRunAllRunning"
+                     ActiveCellIndex="_activeCellIndex" />
     }
 </div>
 
@@ -39,15 +41,19 @@
     [Inject] private INotebookManager NotebookManager { get; set; } = null!;
     [Inject] private NavigationManager Navigation { get; set; } = null!;
     [Inject] private IJSRuntime JS { get; set; } = null!;
+    [Inject] private DAP.SqlNotebook.UI.INotebookRunContext NotebookRunContext { get; set; } = null!;
 
     private Guid? _currentNotebookId;
     private NotebookInfo? _notebook;
     private bool _loading;
     private string? _error;
+    private bool _isRunAllRunning;
+    private int? _activeCellIndex;
 
     protected override void OnInitialized()
     {
         Navigation.LocationChanged += OnLocationChanged;
+        NotebookRunContext.StateChanged += OnRunStateChanged;
         _ = LoadForCurrentUriAsync();
     }
 
@@ -64,6 +70,8 @@
 
         _currentNotebookId = notebookId;
         _error = null;
+        _isRunAllRunning = false;
+        _activeCellIndex = null;
 
         if (!notebookId.HasValue)
         {
@@ -132,6 +140,20 @@
     public void Dispose()
     {
         Navigation.LocationChanged -= OnLocationChanged;
+        NotebookRunContext.StateChanged -= OnRunStateChanged;
+    }
+
+    private void OnRunStateChanged()
+    {
+        if (!_currentNotebookId.HasValue)
+            return;
+
+        if (NotebookRunContext.NotebookId != _currentNotebookId)
+            return;
+
+        _isRunAllRunning = NotebookRunContext.IsRunAllRunning;
+        _activeCellIndex = NotebookRunContext.ActiveCellIndex;
+        _ = InvokeAsync(StateHasChanged);
     }
 }
 

@@ -40,6 +40,7 @@ namespace DAP.SqlNotebook.UI
             builder.Services.AddScoped<IAiAssistInsertService, AiAssistInsertService>();
             builder.Services.AddScoped<ICurrentSqlContext, CurrentSqlContext>();
             builder.Services.AddScoped<ICurrentNotebookContext, CurrentNotebookContext>();
+            builder.Services.AddScoped<INotebookRunContext, NotebookRunContext>();
             builder.Services.AddScoped<ICurrentDatabaseContext, CurrentDatabaseContext>();
             builder.Services.AddScoped<INotebookToolbarService, NotebookToolbarService>();
             builder.Services.AddScoped<INotebookFavoritesService, NotebookFavoritesService>();

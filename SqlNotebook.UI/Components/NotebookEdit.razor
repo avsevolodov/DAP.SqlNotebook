@@ -48,7 +48,8 @@
                                                   OnMoveUp="@(() => MoveCellUp(cellIndex))"
                                                   OnMoveDown="@(() => MoveCellDown(cellIndex))"
                                                   CanMoveUp="@(cellIndex > 0)"
-                                                  CanMoveDown="@(cellIndex < _cellsList.Count - 1)" />
+                                                  CanMoveDown="@(cellIndex < _cellsList.Count - 1)"
+                                                  IsExternalRunning="@(IsRunAllBusy && RunAllCurrentCellIndex == cellIndex)" />
                             }
                             else if (cell.Type == NotebookCellTypeInfo.Excalidraw)
                             {
@@ -361,6 +362,8 @@
     [Parameter] public EventCallback<(int CellId, string Content)> OnMermaidContentChanged { get; set; }
     [Parameter] public EventCallback<NotebookCellInfo> OnDeleteCell { get; set; }
     [Parameter] public EventCallback OnCellUpdated { get; set; }
+    [Parameter] public int? RunAllCurrentCellIndex { get; set; }
+    [Parameter] public bool IsRunAllBusy { get; set; }
 
     [Inject] private IJSRuntime JS { get; set; } = null!;
     [Inject] private ICatalogInsertService CatalogInsertService { get; set; } = null!;

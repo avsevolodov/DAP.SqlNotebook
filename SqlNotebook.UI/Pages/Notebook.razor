@@ -99,7 +99,9 @@ else if (_notebook != null)
                           OnExcalidrawSaveRequested="OnExcalidrawSave"
                           OnExcalidrawEditorContentChanged="OnExcalidrawEditorContentChanged"
                           OnDeleteCell="HandleDeleteCell"
-                          OnCellUpdated="SaveNotebookAfterCellUpdate" />
+                          OnCellUpdated="SaveNotebookAfterCellUpdate"
+                          RunAllCurrentCellIndex="_runAllCurrentCellIndex"
+                          IsRunAllBusy="_runAllBusy" />
         </MudPaper>
     </div>
 }
@@ -127,6 +129,7 @@ else if (_loadAttempted)
     [Inject] private ICurrentDatabaseContext CurrentDatabaseContext { get; set; } = null!;
     [Inject] private ISnackbar Snackbar { get; set; } = null!;
     [Inject] private IRecentNotebooksService RecentNotebooksService { get; set; } = null!;
+    [Inject] private DAP.SqlNotebook.UI.INotebookRunContext NotebookRunContext { get; set; } = null!;
 
     private bool IsNew => Id == Guid.Empty;
     private bool _loading = true;
@@ -150,6 +153,7 @@ else if (_loadAttempted)
     private CancellationTokenSource? _saveDebounceCts;
     private const int NotebookSaveDebounceMs = 1000;
     private bool _runAllBusy;
+    private int? _runAllCurrentCellIndex;
 
     protected override async Task OnInitializedAsync()
     {
@@ -233,6 +237,9 @@ else if (_loadAttempted)
         _runCts?.Dispose();
         _runCts = null;
         CurrentNotebookContext.NotebookId = null;
+        NotebookRunContext.IsRunAllRunning = false;
+        NotebookRunContext.ActiveCellIndex = null;
+        NotebookRunContext.NotebookId = null;
         AiAssistInsertService.SetInsertCallback(null);
         CatalogInsertService.SetInsertNameCallback(null);
         CatalogInsertService.SetInsertSelectCallback(null);
@@ -318,7 +325,8 @@ else if (_loadAttempted)
     private async Task RunAllCells()
     {
         if (_notebook?.Cells == null || _runAllBusy) return;
-        var executable = _notebook.Cells
+        var allCells = _notebook.Cells.ToList();
+        var executable = allCells
             .Where(c => c.Type == NotebookCellTypeInfo.Sql || c.Type == NotebookCellTypeInfo.Chart)
             .Where(c => !string.IsNullOrWhiteSpace(c.Content))
             .ToList();
@@ -327,13 +335,23 @@ else if (_loadAttempted)
             return;
         }
         _runAllBusy = true;
+        _runAllCurrentCellIndex = null;
         _executionError = null;
+        NotebookRunContext.NotebookId = Id;
+        NotebookRunContext.IsRunAllRunning = true;
+        NotebookRunContext.ActiveCellIndex = null;
         try
         {
             await InvokeAsync(StateHasChanged);
             var timeout = _queryTimeoutSeconds ?? 30;
             foreach (var cell in executable)
             {
+                var currentIndex = allCells.IndexOf(cell);
+                _runAllCurrentCellIndex = currentIndex >= 0 ? currentIndex : null;
+                NotebookRunContext.NotebookId = Id;
+                NotebookRunContext.ActiveCellIndex = _runAllCurrentCellIndex;
+                await ScrollToCell(cell);
+                await InvokeAsync(StateHasChanged);
                 var result = await NotebookManager.ExecuteQuery(Id, cell.Content!.Trim(), CancellationToken.None, timeout, cell.CatalogNodeId ?? _selectedDatabase?.Id);
                 cell.ExecutionResult = result;
                 if (cell.Type == NotebookCellTypeInfo.Chart && !string.IsNullOrEmpty(cell.ExecutionResult?.ChartType))
@@ -352,6 +370,10 @@ else if (_loadAttempted)
         finally
         {
             _runAllBusy = false;
+            _runAllCurrentCellIndex = null;
+            NotebookRunContext.ActiveCellIndex = null;
+            NotebookRunContext.IsRunAllRunning = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 

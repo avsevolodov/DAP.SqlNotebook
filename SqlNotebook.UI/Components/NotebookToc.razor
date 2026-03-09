@@ -12,15 +12,24 @@
     @if (Cells != null && Cells.Count > 0)
     {
         <nav class="notebook-toc-nav">
-            @foreach (var cell in Cells)
+            @for (var index = 0; index < Cells.Count; index++)
             {
+                var cell = Cells[index];
+                var isActive = IsRunAllRunning && ActiveCellIndex == index;
                 <div class="notebook-toc-item d-flex align-items-center"
                      style="gap: 6px; padding: 4px 8px; border-radius: 4px; cursor: pointer;"
                      @onclick="@(() => OnCellSelect.InvokeAsync(cell))">
                     <MudIcon Icon="@GetCellTypeIcon(cell.Type)" Size="Size.Small" Style="flex-shrink: 0; opacity: 0.8;" />
-                    <span class="notebook-toc-cell-title text-truncate" title="@GetCellTitle(cell)">
+                    <span class="notebook-toc-cell-title text-truncate flex-grow-1" title="@GetCellTitle(cell)">
                         @GetCellTitle(cell)
                     </span>
+                    @if (isActive)
+                    {
+                        <MudProgressCircular Size="Size.Small"
+                                             Indeterminate="true"
+                                             Color="Color.Primary"
+                                             Style="flex-shrink: 0; width: 18px; height: 18px;" />
+                    }
                 </div>
             }
         </nav>
@@ -60,6 +69,8 @@
     [Parameter] public EventCallback<NotebookCellInfo> OnCellSelect { get; set; }
     [Parameter] public EventCallback<NotebookCellTypeInfo> OnAddCell { get; set; }
     [Parameter] public bool ShowAddButton { get; set; } = true;
+    [Parameter] public bool IsRunAllRunning { get; set; }
+    [Parameter] public int? ActiveCellIndex { get; set; }
 
     private static string GetCellTypeIcon(NotebookCellTypeInfo type)
     {
