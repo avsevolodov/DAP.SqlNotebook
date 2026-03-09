@@ -9,6 +9,32 @@
 @using MudBlazor
 
 <div class="workspaces-tree pa-2">
+    @* Section: Recent (client-side localStorage) *@
+    <div class="workspaces-tree-row workspaces-tree-section"
+         style="padding-left: 4px; cursor: pointer;"
+         @onclick="@(() => _recentSectionExpanded = !_recentSectionExpanded)">
+        <span class="material-icons workspaces-tree-icon" aria-hidden="true">@(_recentSectionExpanded ? "expand_more" : "chevron_right")</span>
+        <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-info-main);" aria-hidden="true">schedule</span>
+        <span class="workspaces-tree-name" style="font-weight: 600;">Recent</span>
+    </div>
+    @if (_recentSectionExpanded)
+    {
+        @if (_recentNotebooks.Count == 0)
+        {
+            <div class="workspaces-tree-row" style="padding-left: 28px; color: var(--mud-palette-text-secondary); font-size: 0.875rem;">Open notebooks and they will appear here.</div>
+        }
+        else
+        {
+            @foreach (var item in _recentNotebooks)
+            {
+                <div class="workspaces-tree-row workspaces-tree-notebook" style="padding-left: 28px; min-height: 28px;">
+                    <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-secondary); font-size: 20px;" aria-hidden="true">menu_book</span>
+                    <a href="@MainRoutes.GetNotebookRoute(item.Id)" class="workspaces-tree-name" title="@item.Name">@item.Name</a>
+                </div>
+            }
+        }
+    }
+
     @* Section: Favorites (notebooks only; folders can be created here) *@
     <div class="workspaces-tree-row workspaces-tree-section"
          style="padding-left: 4px; cursor: pointer;"
@@ -115,7 +141,7 @@
          @onclick="@(() => _mySectionExpanded = !_mySectionExpanded)">
         <span class="material-icons workspaces-tree-icon" aria-hidden="true">@(_mySectionExpanded ? "expand_more" : "chevron_right")</span>
         <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-primary);" aria-hidden="true">person</span>
-        <span class="workspaces-tree-name" style="font-weight: 600;">My workspaces</span>
+        <span class="workspaces-tree-name" style="font-weight: 600;">My</span>
     </div>
     @if (_mySectionExpanded)
     {
@@ -147,7 +173,7 @@
          @onclick="@(() => _allSectionExpanded = !_allSectionExpanded)">
         <span class="material-icons workspaces-tree-icon" aria-hidden="true">@(_allSectionExpanded ? "expand_more" : "chevron_right")</span>
         <span class="material-icons workspaces-tree-icon" style="color: var(--mud-palette-primary);" aria-hidden="true">workspaces</span>
-        <span class="workspaces-tree-name" style="font-weight: 600;">Workspaces</span>
+        <span class="workspaces-tree-name" style="font-weight: 600;">All</span>
     </div>
     @if (_allSectionExpanded)
     {
@@ -178,8 +204,11 @@
     [Inject] private IWorkspaceManager WorkspaceManager { get; set; } = null!;
     [Inject] private INotebookManager NotebookManager { get; set; } = null!;
     [Inject] private INotebookFavoritesService FavoritesService { get; set; } = null!;
+    [Inject] private IRecentNotebooksService RecentNotebooksService { get; set; } = null!;
     [Inject] private IJSRuntime JSRuntime { get; set; } = null!;
 
+    private List<RecentNotebookEntry> _recentNotebooks = new();
+    private bool _recentSectionExpanded = true;
     private List<WorkspaceInfo> _myNodes = new();
     private List<WorkspaceInfo> _treeNodes = new();
     private List<FavoriteFolderInfo> _favoriteFolders = new();
@@ -200,6 +229,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        _recentNotebooks = (await RecentNotebooksService.GetRecentAsync(10)).ToList();
         await LoadAll();
     }
 

@@ -1,0 +1,109 @@
+@namespace DAP.SqlNotebook.UI.Components
+@using System.Linq
+@using DAP.SqlNotebook.Contract.Entities
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+
+<div class="notebook-toc pa-2">
+    <div class="notebook-toc-header d-flex align-items-center mb-2" style="gap: 6px;">
+        <MudIcon Icon="@Icons.Material.Filled.List" Size="Size.Small" />
+        <span class="notebook-toc-title">Table of contents</span>
+    </div>
+    @if (Cells != null && Cells.Count > 0)
+    {
+        <nav class="notebook-toc-nav">
+            @foreach (var cell in Cells)
+            {
+                <div class="notebook-toc-item d-flex align-items-center"
+                     style="gap: 6px; padding: 4px 8px; border-radius: 4px; cursor: pointer;"
+                     @onclick="@(() => OnCellSelect.InvokeAsync(cell))">
+                    <MudIcon Icon="@GetCellTypeIcon(cell.Type)" Size="Size.Small" Style="flex-shrink: 0; opacity: 0.8;" />
+                    <span class="notebook-toc-cell-title text-truncate" title="@GetCellTitle(cell)">
+                        @GetCellTitle(cell)
+                    </span>
+                </div>
+            }
+        </nav>
+    }
+    else
+    {
+        <p class="notebook-toc-empty mud-typography mud-typography-body2 pa-2" style="color: var(--mud-palette-text-secondary);">
+            No cells
+        </p>
+    }
+    @if (ShowAddButton)
+    {
+        <div class="notebook-toc-actions mt-2">
+            <MudMenu AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               FullWidth="true"
+                               Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Add">
+                        Add cell
+                    </MudButton>
+                </ActivatorContent>
+                <ChildContent>
+                    <MudMenuItem OnClick="@(() => AddCellAndClose(NotebookCellTypeInfo.Sql))" Icon="@Icons.Material.Filled.Code">SQL</MudMenuItem>
+                    <MudMenuItem OnClick="@(() => AddCellAndClose(NotebookCellTypeInfo.Markdown))" Icon="@Icons.Material.Filled.TextFields">Markdown</MudMenuItem>
+                    <MudMenuItem OnClick="@(() => AddCellAndClose(NotebookCellTypeInfo.Chart))" Icon="@Icons.Material.Filled.BarChart">Chart</MudMenuItem>
+                    <MudMenuItem OnClick="@(() => AddCellAndClose(NotebookCellTypeInfo.Mermaid))" Icon="@Icons.Material.Filled.AccountTree">Mermaid</MudMenuItem>
+                    <MudMenuItem OnClick="@(() => AddCellAndClose(NotebookCellTypeInfo.Excalidraw))" Icon="@Icons.Material.Filled.Gesture">Diagram</MudMenuItem>
+                </ChildContent>
+            </MudMenu>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<NotebookCellInfo>? Cells { get; set; }
+    [Parameter] public EventCallback<NotebookCellInfo> OnCellSelect { get; set; }
+    [Parameter] public EventCallback<NotebookCellTypeInfo> OnAddCell { get; set; }
+    [Parameter] public bool ShowAddButton { get; set; } = true;
+
+    private static string GetCellTypeIcon(NotebookCellTypeInfo type)
+    {
+        return type switch
+        {
+            NotebookCellTypeInfo.Sql => Icons.Material.Filled.Code,
+            NotebookCellTypeInfo.Markdown => Icons.Material.Filled.TextFields,
+            NotebookCellTypeInfo.Chart => Icons.Material.Filled.BarChart,
+            NotebookCellTypeInfo.Excalidraw => Icons.Material.Filled.Gesture,
+            NotebookCellTypeInfo.Mermaid => Icons.Material.Filled.AccountTree,
+            _ => Icons.Material.Filled.Circle
+        };
+    }
+
+    private static string GetCellTitle(NotebookCellInfo cell)
+    {
+        if (!string.IsNullOrWhiteSpace(cell.Title))
+        {
+            var trimmed = cell.Title.Trim();
+            return trimmed.Length > 40 ? trimmed[..37] + "…" : trimmed;
+        }
+        if (!string.IsNullOrWhiteSpace(cell.Content))
+        {
+            var firstLine = cell.Content.TrimStart().Split('\n').FirstOrDefault()?.Trim() ?? "";
+            if (firstLine.Length > 40)
+                firstLine = firstLine[..37] + "…";
+            if (!string.IsNullOrEmpty(firstLine))
+                return firstLine;
+        }
+        return cell.Type switch
+        {
+            NotebookCellTypeInfo.Sql => "SQL",
+            NotebookCellTypeInfo.Markdown => "Markdown",
+            NotebookCellTypeInfo.Chart => "Chart",
+            NotebookCellTypeInfo.Excalidraw => "Diagram",
+            NotebookCellTypeInfo.Mermaid => "Mermaid",
+            _ => "Cell"
+        };
+    }
+
+    private async Task AddCellAndClose(NotebookCellTypeInfo type)
+    {
+        if (OnAddCell.HasDelegate)
+            await OnAddCell.InvokeAsync(type);
+    }
+}

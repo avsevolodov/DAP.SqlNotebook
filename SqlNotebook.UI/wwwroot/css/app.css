@@ -375,3 +375,28 @@ code {
     background: var(--mud-palette-background-grey) !important;
     border: 1px solid var(--mud-palette-lines-default);
 }
+
+/* Notebook page: TOC sidebar and layout */
+.notebook-page-layout {
+    flex: 1;
+    min-height: 0;
+}
+.notebook-toc-sidebar {
+    background: var(--mud-palette-background, #fff);
+}
+.notebook-toc .notebook-toc-title {
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+.notebook-toc-item:hover {
+    background: var(--mud-palette-action-default-hover, rgba(0, 0, 0, 0.04));
+}
+.notebook-toc-cell-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8125rem;
+}
+.notebook-cell-wrapper {
+    scroll-margin-top: 1rem;
+}

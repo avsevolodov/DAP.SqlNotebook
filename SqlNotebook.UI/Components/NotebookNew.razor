@@ -9,33 +9,35 @@
     <MudTextField T="string"
                  Value="@Name"
                  ValueChanged="HandleNameChanged"
-                 Label="Название notebook"
+                 Label="Notebook name"
                  Variant="Variant.Outlined"
                  Immediate="true"
                  @onkeydown="OnKeyDown" />
     <MudRadioGroup T="NotebookTypeInfo" Name="NotebookType" Value="@NotebookType" ValueChanged="HandleTypeChanged" Row="true">
-        <MudRadio T="NotebookTypeInfo" Option="NotebookTypeInfo.Db" Color="Color.Primary">БД</MudRadio>
+        <MudRadio T="NotebookTypeInfo" Option="NotebookTypeInfo.Db" Color="Color.Primary">DB</MudRadio>
         <MudRadio T="NotebookTypeInfo" Option="NotebookTypeInfo.Generic" Color="Color.Primary">Generic</MudRadio>
     </MudRadioGroup>
     <MudText Typo="Typo.caption" Color="Color.Secondary">
-        @(NotebookType == NotebookTypeInfo.Db ? "Выберите БД для выполнения запросов." : "Простой ноутбук без подключения к БД (только ячейки Markdown, Excalidraw).")
+        @(NotebookType == NotebookTypeInfo.Db
+            ? "Select a database for running queries."
+            : "Simple notebook without a database (only Markdown and Excalidraw cells).")
     </MudText>
     @if (NotebookType == NotebookTypeInfo.Db && Databases != null && Databases.Count > 0)
     {
         <MudSelect T="CatalogNodeInfo?"
-                   Label="База данных (схема)"
+                   Label="Database (schema)"
                    Variant="Variant.Outlined"
                    Value="@SelectedDatabase"
                    ValueChanged="HandleDatabaseChanged"
                    ToStringFunc="@(n => n != null ? (n.DatabaseName ?? n.Name ?? "—") : "—")">
-            <MudSelectItem T="CatalogNodeInfo?" Value="@_nullDatabase">— не выбрана —</MudSelectItem>
+            <MudSelectItem T="CatalogNodeInfo?" Value="@_nullDatabase">— not selected —</MudSelectItem>
             @foreach (var db in Databases)
             {
                 <MudSelectItem T="CatalogNodeInfo?" Value="@db">@(db.DatabaseName ?? db.Name ?? "—")</MudSelectItem>
             }
         </MudSelect>
     }
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleCreate">Создать</MudButton>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleCreate">Create</MudButton>
 </MudStack>
 
 @code {

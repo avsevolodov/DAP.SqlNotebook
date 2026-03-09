@@ -12,9 +12,16 @@ BEGIN
         Name NVARCHAR(256) NOT NULL,
         Description NVARCHAR(2048) NULL,
         OwnerLogin NVARCHAR(256) NULL,
+        ParentId UNIQUEIDENTIFIER NULL,
+        IsFolder BIT NOT NULL CONSTRAINT DF_Workspaces_IsFolder DEFAULT 0,
+        Icon NVARCHAR(64) NULL,
+        Visibility INT NOT NULL CONSTRAINT DF_Workspaces_Visibility DEFAULT (0),
         CONSTRAINT PK_Workspaces PRIMARY KEY (Id)
     );
     CREATE NONCLUSTERED INDEX IX_Workspaces_OwnerLogin ON dbo.Workspaces (OwnerLogin);
+    CREATE NONCLUSTERED INDEX IX_Workspaces_ParentId ON dbo.Workspaces (ParentId);
+    ALTER TABLE dbo.Workspaces
+        ADD CONSTRAINT FK_Workspaces_Parent FOREIGN KEY (ParentId) REFERENCES dbo.Workspaces(Id) ON DELETE NO ACTION;
 END
 GO
 
@@ -119,11 +126,14 @@ BEGIN
         CatalogNodeId UNIQUEIDENTIFIER NULL,
         CatalogNodeDisplayName NVARCHAR(256) NULL,
         NotebookType INT NOT NULL CONSTRAINT DF_Notebooks_NotebookType DEFAULT 0,
+        Status INT NOT NULL CONSTRAINT DF_Notebooks_Status DEFAULT 0,
+        TagsJson NVARCHAR(2048) NULL,
         CONSTRAINT PK_Notebooks PRIMARY KEY (Id),
         CONSTRAINT FK_Notebooks_Workspaces FOREIGN KEY (WorkspaceId) REFERENCES dbo.Workspaces(Id) ON DELETE SET NULL
     );
     CREATE NONCLUSTERED INDEX IX_Notebooks_UpdatedAt ON dbo.Notebooks (UpdatedAt);
     CREATE NONCLUSTERED INDEX IX_Notebooks_WorkspaceId ON dbo.Notebooks (WorkspaceId);
+    CREATE NONCLUSTERED INDEX IX_Notebooks_Status ON dbo.Notebooks (Status);
 END
 GO
 
@@ -137,6 +147,7 @@ BEGIN
         CellType INT NOT NULL,
         Content NVARCHAR(MAX) NOT NULL,
         ExecutionResultJson NVARCHAR(MAX) NULL,
+        Title NVARCHAR(256) NULL,
         CreatedBy NVARCHAR(256) NULL,
         CatalogNodeId UNIQUEIDENTIFIER NULL,
         DatabaseDisplayName NVARCHAR(256) NULL,

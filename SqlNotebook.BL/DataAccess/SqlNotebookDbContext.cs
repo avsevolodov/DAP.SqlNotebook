@@ -16,6 +16,7 @@ namespace DAP.SqlNotebook.BL.DataAccess
         public DbSet<WorkspaceEntity> Workspaces => Set<WorkspaceEntity>();
         public DbSet<UserFavoriteFolderEntity> UserFavoriteFolders => Set<UserFavoriteFolderEntity>();
         public DbSet<UserNotebookFavoriteEntity> UserNotebookFavorites => Set<UserNotebookFavoriteEntity>();
+        public DbSet<UserNotebookAccessEntity> UserNotebookAccess => Set<UserNotebookAccessEntity>();
 
         public DbSet<DbEntityDescription> DbEntities => Set<DbEntityDescription>();
         public DbSet<DbFieldDescription> DbFields => Set<DbFieldDescription>();
@@ -35,8 +36,11 @@ namespace DAP.SqlNotebook.BL.DataAccess
             {
                 e.HasKey(x => x.Id);
                 e.Property(x => x.Name).HasMaxLength(512);
+                e.Property(x => x.Status).HasDefaultValue(0);
+                e.Property(x => x.TagsJson).HasMaxLength(2048);
                 e.HasIndex(x => x.UpdatedAt);
                 e.HasIndex(x => x.WorkspaceId);
+                e.HasIndex(x => x.Status);
                 e.HasOne(x => x.Workspace)
                     .WithMany()
                     .HasForeignKey(x => x.WorkspaceId)
@@ -54,6 +58,7 @@ namespace DAP.SqlNotebook.BL.DataAccess
                 // SQL Server: nvarchar(n) max is 4000; use nvarchar(max) for large contents
                 e.Property(x => x.Content).HasColumnType("nvarchar(max)");
                 e.Property(x => x.ExecutionResultJson).HasColumnType("nvarchar(max)");
+                e.Property(x => x.Title).HasMaxLength(256);
                 e.Property(x => x.DatabaseDisplayName).HasMaxLength(256);
             });
 
@@ -116,6 +121,8 @@ namespace DAP.SqlNotebook.BL.DataAccess
                 e.Property(x => x.Description).HasMaxLength(2048);
                 e.Property(x => x.OwnerLogin).HasMaxLength(256);
                 e.Property(x => x.IsFolder);
+                e.Property(x => x.Icon).HasMaxLength(64);
+                e.Property(x => x.Visibility).HasDefaultValue(0);
                 e.HasIndex(x => x.OwnerLogin);
                 e.HasIndex(x => x.ParentId);
                 e.HasOne<WorkspaceEntity>()
@@ -175,6 +182,19 @@ namespace DAP.SqlNotebook.BL.DataAccess
                     .WithMany()
                     .HasForeignKey(x => x.FolderId)
                     .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            modelBuilder.Entity<UserNotebookAccessEntity>(e =>
+            {
+                e.HasKey(x => new { x.UserLogin, x.NotebookId });
+                e.Property(x => x.UserLogin).HasMaxLength(256);
+                e.HasIndex(x => x.UserLogin);
+                e.HasIndex(x => x.NotebookId);
+                e.Property(x => x.CreatedAt);
+                e.HasOne<NotebookEntity>()
+                    .WithMany()
+                    .HasForeignKey(x => x.NotebookId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }

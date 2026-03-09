@@ -1,0 +1,137 @@
+@using System.Threading
+@using DAP.SqlNotebook.Contract.Entities
+@using DAP.SqlNotebook.Service.Client.V1
+@using DAP.SqlNotebook.UI.Helpers
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Routing
+@using MudBlazor
+
+<div class="notebook-toc-panel pa-2">
+    @if (_loading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Style="height:2px;" />
+    }
+    else if (_error != null)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true">@_error</MudAlert>
+    }
+    else if (!_currentNotebookId.HasValue)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            Open a notebook to see its table of contents.
+        </MudText>
+    }
+    else if (_notebook == null || _notebook.Cells == null || _notebook.Cells.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            This notebook has no cells yet.
+        </MudText>
+    }
+    else
+    {
+        <NotebookToc Cells="@(_notebook.Cells.ToList())"
+                     OnCellSelect="OnCellSelect"
+                     ShowAddButton="false" />
+    }
+</div>
+
+@code {
+    [Inject] private INotebookManager NotebookManager { get; set; } = null!;
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+
+    private Guid? _currentNotebookId;
+    private NotebookInfo? _notebook;
+    private bool _loading;
+    private string? _error;
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        _ = LoadForCurrentUriAsync();
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        _ = LoadForCurrentUriAsync();
+    }
+
+    private async Task LoadForCurrentUriAsync()
+    {
+        Guid? notebookId = TryGetNotebookIdFromUri();
+        if (notebookId == _currentNotebookId && _notebook != null)
+            return;
+
+        _currentNotebookId = notebookId;
+        _error = null;
+
+        if (!notebookId.HasValue)
+        {
+            _notebook = null;
+            _loading = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _loading = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var info = await NotebookManager.GetNotebook(notebookId.Value, CancellationToken.None);
+            _notebook = info;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _notebook = null;
+        }
+        finally
+        {
+            _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Guid? TryGetNotebookIdFromUri()
+    {
+        try
+        {
+            var uri = new Uri(Navigation.Uri);
+            var path = uri.AbsolutePath; // e.g. /notebooks/{id}
+            var prefix = MainRoutes.Notebooks + "/";
+            if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            var idPart = path.Substring(prefix.Length);
+            if (Guid.TryParse(idPart, out var id))
+                return id;
+        }
+        catch
+        {
+            // ignore
+        }
+        return null;
+    }
+
+    private async Task OnCellSelect(NotebookCellInfo cell)
+    {
+        if (_notebook?.Cells == null) return;
+        var list = _notebook.Cells.ToList();
+        var index = list.IndexOf(cell);
+        if (index < 0) return;
+        try
+        {
+            await JS.InvokeVoidAsync("eval", $"document.getElementById('notebook-cell-{index}')?.scrollIntoView({{ behavior: 'smooth', block: 'start' }});");
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}
+

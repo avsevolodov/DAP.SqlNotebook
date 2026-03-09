@@ -13,62 +13,81 @@
               ? "position:fixed; inset:0; z-index:1300; margin:0; border-radius:0; background-color: var(--mud-palette-background);"
               : null)">
     <MudStack Spacing="1" Style="@(_isFullscreen ? "height:100%; align-items:stretch;" : null)">
-        <div class="notebook-cell-code-header d-flex align-items-center" style="gap: 8px;">
-            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Title="Delete cell" OnClick="DeleteCell" />
+        <div class="notebook-cell-code-header d-flex align-items-center flex-wrap" style="gap: 8px;">
+            <MudIconButton Icon="@(_collapsed ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ExpandLess)"
+                           Size="Size.Small"
+                           Title="@(_collapsed ? "Expand" : "Collapse")"
+                           OnClick="ToggleCollapsed" />
+            <MudTextField T="string"
+                          @bind-Value="Cell.Title"
+                          Placeholder="Cell title (optional)"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Class="ml-2"
+                          Style="max-width: 260px;"
+                          Immediate="true" />
             <MudIconButton Icon="@Icons.Material.Filled.Save"
                            Size="Size.Small"
                            Disabled="@(!_isDirty)"
-                           Title="Сохранить"
+                           Title="Save"
                            OnClick="SaveCell" />
             <MudIconButton Icon="@Icons.Material.Filled.UploadFile"
                            Size="Size.Small"
-                           Title="Импортировать из файла"
+                           Title="Import from file"
                            OnClick="ImportFromFile" />
             @if (_isFullscreen)
             {
                 <MudIconButton Icon="@Icons.Material.Filled.FullscreenExit"
                                Size="Size.Small"
-                               Title="Закрыть полноэкранный режим (Esc)"
+                               Title="Exit fullscreen (Esc)"
                                OnClick="ToggleFullscreen" />
             }
             else
             {
                 <MudIconButton Icon="@Icons.Material.Filled.Fullscreen"
                                Size="Size.Small"
-                               Title="Развернуть во весь экран"
+                               Title="Enter fullscreen"
                                OnClick="ToggleFullscreen" />
             }
-            <MudText Typo="Typo.caption" Color="Color.Secondary">Excalidraw — диаграмма</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Excalidraw — diagram</MudText>
+            <div class="flex-grow-1"></div>
+            @if (!_collapsed)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" Title="Delete cell" OnClick="DeleteCell" />
+            }
         </div>
-        <div class="notebook-excalidraw-wrap"
-             style="@(_isFullscreen ? "flex:1 1 auto; height:calc(100vh - 96px); min-height:300px;" : "height: 400px; min-height: 300px;")">
-            <iframe id="@_iframeId"
-                    src="excalidraw/embed.html"
-                    title="Excalidraw diagram"
-                    style="width: 100%; height: 100%; border: 1px solid var(--mud-palette-lines-default); border-radius: 4px; pointer-events: auto;"
-                    @onload="HandleIframeLoad" />
-        </div>
+        @if (!_collapsed)
+        {
+            <div class="notebook-excalidraw-wrap"
+                 style="@(_isFullscreen ? "flex:1 1 auto; height:calc(100vh - 96px); min-height:300px;" : "height: 400px; min-height: 300px;")">
+                <iframe id="@_iframeId"
+                        src="excalidraw/embed.html"
+                        title="Excalidraw diagram"
+                        style="width: 100%; height: 100%; border: 1px solid var(--mud-palette-lines-default); border-radius: 4px; pointer-events: auto;"
+                        @onload="HandleIframeLoad" />
+            </div>
+        }
     </MudStack>
 </MudPaper>
 
 <MudDialog @bind-Visible="_showDiscardDialog">
     <TitleContent>
-        <MudText Typo="Typo.h6">Несохранённые изменения</MudText>
+        <MudText Typo="Typo.h6">Unsaved changes</MudText>
     </TitleContent>
     <DialogContent>
         <MudText Typo="Typo.body1">
-            У вас есть несохранённые изменения диаграммы. Сохранить перед выходом?
+            You have unsaved diagram changes. Save before closing?
         </MudText>
     </DialogContent>
     <DialogActions>
         <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => ConfirmDiscardAsync(true))">
-            Сохранить
+            Save
         </MudButton>
         <MudButton Color="Color.Default" Variant="Variant.Text" OnClick="@(() => ConfirmDiscardAsync(false))">
-            Не сохранять
+            Don't save
         </MudButton>
         <MudButton Color="Color.Secondary" Variant="Variant.Text" OnClick="CancelDiscard">
-            Отмена
+            Cancel
         </MudButton>
     </DialogActions>
 </MudDialog>
@@ -86,6 +105,7 @@
     private bool _listenerRegistered;
     private string? _lastSentContent;
     private bool _isFullscreen;
+    private bool _collapsed;
     private bool _isDirty;
     private bool _showDiscardDialog;
     private bool _pendingFullscreenExit;
@@ -94,6 +114,8 @@
     {
         _dotNetRef = DotNetObjectReference.Create(this);
     }
+
+    private void ToggleCollapsed() => _collapsed = !_collapsed;
 
     private async Task HandleIframeLoad()
     {

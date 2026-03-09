@@ -26,11 +26,26 @@ namespace DAP.SqlNotebook.BL.DataAccess
                 .ConfigureAwait(false);
         }
 
-        public async Task<IReadOnlyList<NotebookEntity>> GetListAsync(int offset, int batchSize, Guid? workspaceId = null, CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<NotebookEntity>> GetListAsync(
+            int offset,
+            int batchSize,
+            string? userLogin = null,
+            Guid? workspaceId = null,
+            int? status = null,
+            CancellationToken cancellationToken = default)
         {
             IQueryable<NotebookEntity> query = _db.Notebooks.AsNoTracking().OrderByDescending(x => x.UpdatedAt);
+            if (!string.IsNullOrWhiteSpace(userLogin))
+            {
+                var login = userLogin.Trim();
+                query = query.Where(n =>
+                    n.CreatedBy == login ||
+                    _db.UserNotebookAccess.Any(a => a.NotebookId == n.Id && a.UserLogin == login));
+            }
             if (workspaceId.HasValue)
                 query = query.Where(x => x.WorkspaceId == workspaceId.Value);
+            if (status.HasValue)
+                query = query.Where(x => x.Status == status.Value);
             return await query
                 .Skip(offset)
                 .Take(batchSize)
@@ -38,11 +53,25 @@ namespace DAP.SqlNotebook.BL.DataAccess
                 .ConfigureAwait(false);
         }
 
-        public async Task<int> GetTotalCountAsync(Guid? workspaceId = null, CancellationToken cancellationToken = default)
+        public async Task<int> GetTotalCountAsync(
+            string? userLogin = null,
+            Guid? workspaceId = null,
+            int? status = null,
+            CancellationToken cancellationToken = default)
         {
+            IQueryable<NotebookEntity> query = _db.Notebooks.AsNoTracking();
+            if (!string.IsNullOrWhiteSpace(userLogin))
+            {
+                var login = userLogin.Trim();
+                query = query.Where(n =>
+                    n.CreatedBy == login ||
+                    _db.UserNotebookAccess.Any(a => a.NotebookId == n.Id && a.UserLogin == login));
+            }
             if (workspaceId.HasValue)
-                return await _db.Notebooks.CountAsync(x => x.WorkspaceId == workspaceId.Value, cancellationToken).ConfigureAwait(false);
-            return await _db.Notebooks.CountAsync(cancellationToken).ConfigureAwait(false);
+                query = query.Where(x => x.WorkspaceId == workspaceId.Value);
+            if (status.HasValue)
+                query = query.Where(x => x.Status == status.Value);
+            return await query.CountAsync(cancellationToken).ConfigureAwait(false);
         }
 
         public async Task<NotebookEntity> CreateAsync(NotebookEntity notebook, CancellationToken cancellationToken = default)
@@ -82,6 +111,8 @@ namespace DAP.SqlNotebook.BL.DataAccess
             existing.WorkspaceId = notebook.WorkspaceId;
             existing.CatalogNodeId = notebook.CatalogNodeId;
             existing.CatalogNodeDisplayName = notebook.CatalogNodeDisplayName;
+            existing.Status = notebook.Status;
+            existing.TagsJson = notebook.TagsJson;
             existing.UpdatedBy = notebook.UpdatedBy;
 
             // Replace cells: remove existing, add from notebook
@@ -105,6 +136,15 @@ namespace DAP.SqlNotebook.BL.DataAccess
                 existing.Cells.Add(newCell);
             }
 
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        public async Task SetStatusAsync(Guid id, int status, CancellationToken cancellationToken = default)
+        {
+            var notebook = await _db.Notebooks.FindAsync(new object[] { id }, cancellationToken).ConfigureAwait(false);
+            if (notebook == null) return;
+            notebook.Status = status;
+            notebook.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
 

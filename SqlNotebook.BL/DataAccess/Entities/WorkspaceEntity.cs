@@ -26,5 +26,12 @@ namespace DAP.SqlNotebook.BL.DataAccess.Entities
 
         /// <summary>If true, this node is a folder (container); if false, a workspace (notebooks live here).</summary>
         public bool IsFolder { get; set; }
+
+        /// <summary>Optional icon name (e.g. Material icon name).</summary>
+        [MaxLength(64)]
+        public string? Icon { get; set; }
+
+        /// <summary>0 = Private (only owner), 1 = Public.</summary>
+        public int Visibility { get; set; }
     }
 }

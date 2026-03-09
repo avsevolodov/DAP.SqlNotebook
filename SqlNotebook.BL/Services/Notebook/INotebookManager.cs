@@ -15,13 +15,17 @@ public interface INotebookManager
         int offset,
         int batchSize,
         Guid? workspaceId,
-        CancellationToken ct);
+        string? userLogin,
+        NotebookStatusInfo? status = null,
+        CancellationToken ct = default);
 
     Task<NotebookInfo?> GetByIdAsync(Guid id, CancellationToken ct);
 
     Task<NotebookInfo> CreateAsync(NotebookInfo model, string? userLogin, CancellationToken ct);
 
     Task<NotebookInfo> UpdateAsync(Guid id, NotebookInfo model, string? userLogin, CancellationToken ct);
+
+    Task SetStatusAsync(Guid id, NotebookStatusInfo status, CancellationToken ct = default);
 
     Task DeleteAsync(Guid id, CancellationToken ct);
 

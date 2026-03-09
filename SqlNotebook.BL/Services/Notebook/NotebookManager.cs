@@ -27,10 +27,13 @@ public sealed class NotebookManager : INotebookManager
         int offset,
         int batchSize,
         Guid? workspaceId,
-        CancellationToken ct)
+        string? userLogin,
+        NotebookStatusInfo? status = null,
+        CancellationToken ct = default)
     {
-        var items = await _repository.GetListAsync(offset, batchSize, workspaceId, ct).ConfigureAwait(false);
-        var total = await _repository.GetTotalCountAsync(workspaceId, ct).ConfigureAwait(false);
+        var statusInt = status.HasValue ? (int)status.Value : (int?)null;
+        var items = await _repository.GetListAsync(offset, batchSize, userLogin, workspaceId, statusInt, ct).ConfigureAwait(false);
+        var total = await _repository.GetTotalCountAsync(userLogin, workspaceId, statusInt, ct).ConfigureAwait(false);
         var notebooks = items.Select(e => _mapper.Map<NotebookMetaInfo>(e)).ToList();
         return (notebooks, total);
     }
@@ -71,6 +74,9 @@ public sealed class NotebookManager : INotebookManager
         var updated = await _repository.GetByIdAsync(id, ct).ConfigureAwait(false);
         return _mapper.Map<NotebookInfo>(updated!);
     }
+
+    public Task SetStatusAsync(Guid id, NotebookStatusInfo status, CancellationToken ct = default)
+        => _repository.SetStatusAsync(id, (int)status, ct);
 
     public Task DeleteAsync(Guid id, CancellationToken ct) => _repository.DeleteAsync(id, ct);
 

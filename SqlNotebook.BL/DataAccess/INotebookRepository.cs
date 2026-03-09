@@ -10,13 +10,25 @@ namespace DAP.SqlNotebook.BL.DataAccess
     {
         Task<NotebookEntity?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
-        Task<IReadOnlyList<NotebookEntity>> GetListAsync(int offset, int batchSize, Guid? workspaceId = null, CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<NotebookEntity>> GetListAsync(
+            int offset,
+            int batchSize,
+            string? userLogin = null,
+            Guid? workspaceId = null,
+            int? status = null,
+            CancellationToken cancellationToken = default);
 
-        Task<int> GetTotalCountAsync(Guid? workspaceId = null, CancellationToken cancellationToken = default);
+        Task<int> GetTotalCountAsync(
+            string? userLogin = null,
+            Guid? workspaceId = null,
+            int? status = null,
+            CancellationToken cancellationToken = default);
 
         Task<NotebookEntity> CreateAsync(NotebookEntity notebook, CancellationToken cancellationToken = default);
 
         Task UpdateAsync(NotebookEntity notebook, CancellationToken cancellationToken = default);
+
+        Task SetStatusAsync(Guid id, int status, CancellationToken cancellationToken = default);
 
         Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
     }

@@ -1,0 +1,83 @@
+@namespace DAP.SqlNotebook.UI.Components
+@using DAP.SqlNotebook.Contract.Entities
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+@using global::SqlNotebook.Mermaid.Components
+
+<MudPaper Class="pa-3 notebook-cell-paper" Elevation="1" Outlined="true">
+    <MudStack Spacing="2">
+        <div class="d-flex align-items-center flex-wrap" style="gap: 8px;">
+            <MudIconButton Icon="@(_collapsed ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ExpandLess)"
+                           Size="Size.Small"
+                           Title="@(_collapsed ? "Expand" : "Collapse")"
+                           OnClick="ToggleCollapsed" />
+            <MudTextField T="string"
+                          @bind-Value="Cell.Title"
+                          Placeholder="Cell title (optional)"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Class="ml-2"
+                          Style="max-width: 260px;"
+                          Immediate="true" />
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Mermaid — diagram</MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.Save"
+                           Size="Size.Small"
+                           Disabled="@(!_isDirty)"
+                           Title="Save"
+                           OnClick="Save" />
+            <div class="flex-grow-1"></div>
+            @if (!_collapsed)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" Title="Delete cell" OnClick="DeleteCell" />
+            }
+        </div>
+        @if (!_collapsed)
+        {
+            <MudTextField Value="@Cell.Content"
+                          ValueChanged="@(EventCallback.Factory.Create<string>(this, HandleContentChanged))"
+                          Label="Mermaid code"
+                          Variant="Variant.Outlined"
+                          Lines="6"
+                          Placeholder="graph TD&#10;  A --> B"
+                          Immediate="true" />
+            @if (!string.IsNullOrWhiteSpace(Cell.Content))
+            {
+                <div class="mermaid-cell-preview mt-2">
+                    <MermaidDiagram Text="@Cell.Content" CssClass="mermaid-cell-diagram" />
+                </div>
+            }
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public NotebookCellInfo Cell { get; set; } = null!;
+    [Parameter] public EventCallback<NotebookCellInfo> OnDeleteCell { get; set; }
+    [Parameter] public EventCallback<(int CellId, string Content)> OnContentChanged { get; set; }
+
+    private bool _collapsed;
+    private bool _isDirty;
+
+    private void ToggleCollapsed() => _collapsed = !_collapsed;
+
+    private async Task HandleContentChanged(string value)
+    {
+        Cell.Content = value ?? "";
+        _isDirty = true;
+    }
+
+    private async Task Save()
+    {
+        if (!_isDirty)
+            return;
+        if (OnContentChanged.HasDelegate)
+            await OnContentChanged.InvokeAsync((Cell.Id, Cell.Content ?? ""));
+        _isDirty = false;
+    }
+
+    private async Task DeleteCell()
+    {
+        if (OnDeleteCell.HasDelegate)
+            await OnDeleteCell.InvokeAsync(Cell);
+    }
+}

@@ -1,0 +1,74 @@
+@namespace DAP.SqlNotebook.UI.Components
+@using DAP.Markdown
+@using DAP.SqlNotebook.Contract.Entities
+@using DAP.SqlNotebook.UI.Helpers
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+
+<MudPaper Class="pa-3 notebook-cell-paper" Elevation="1" Outlined="true">
+    <MudStack Spacing="1">
+        <div class="notebook-cell-code-frame notebook-cell-header-section">
+            <div class="notebook-cell-code-header d-flex align-items-center flex-wrap" style="gap: 6px;">
+                @* Common: collapse *@
+                <MudIconButton Icon="@(_collapsed ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ExpandLess)"
+                               Size="Size.Small"
+                               Title="@(_collapsed ? "Expand" : "Collapse")"
+                               OnClick="ToggleCollapsed" />
+                <MudText Typo="Typo.caption"
+                         Class="ml-2 notebook-cell-title"
+                         Style="max-width: 260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    @GetTitle()
+                </MudText>
+                <div class="flex-grow-1"></div>
+                @if (!_collapsed)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                   Size="Size.Small"
+                                   Color="Color.Error"
+                                   Title="Delete cell"
+                                   OnClick="DeleteCell" />
+                }
+            </div>
+        </div>
+        @if (!_collapsed)
+        {
+            <MudPaper Class="pa-2" Elevation="0">
+                <MudMarkdown Value="@Cell.Content" />
+            </MudPaper>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public NotebookCellInfo Cell { get; set; } = null!;
+    [Parameter] public EventCallback<NotebookCellInfo> OnDeleteCell { get; set; }
+
+    private bool _collapsed;
+
+    private void ToggleCollapsed() => _collapsed = !_collapsed;
+
+    private string GetTitle()
+    {
+        if (!string.IsNullOrWhiteSpace(Cell.Title))
+        {
+            var t = Cell.Title.Trim();
+            return t.Length > 40 ? t[..37] + "…" : t;
+        }
+        if (!string.IsNullOrWhiteSpace(Cell.Content))
+        {
+            var first = Cell.Content.TrimStart().Split('\n').FirstOrDefault()?.Trim() ?? "";
+            if (first.Length > 40)
+                first = first[..37] + "…";
+            if (!string.IsNullOrEmpty(first))
+                return first;
+        }
+        return "Markdown";
+    }
+
+    private async Task DeleteCell()
+    {
+        if (OnDeleteCell.HasDelegate)
+            await OnDeleteCell.InvokeAsync(Cell);
+    }
+}
+

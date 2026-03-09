@@ -3,6 +3,7 @@ using DAP.SqlNotebook.BL.DataAccess;
 using DAP.SqlNotebook.BL.Services;
 using DAP.SqlNotebook.BL.Services.AiSql;
 using DAP.SqlNotebook.BL.Services.Notebook;
+using DAP.SqlNotebook.BL.Services.NotebookAccess;
 using DAP.SqlNotebook.Service.Mapper;
 using DAP.SqlNotebook.Service.Services;
 using DAP.SqlNotebook.Service.Services.Database;
@@ -28,6 +29,7 @@ internal static class IoCConfigurator
 
         services.AddScoped<INotebookRepository, NotebookRepository>();
         services.AddScoped<INotebookFavoritesRepository, NotebookFavoritesRepository>();
+        services.AddScoped<IUserNotebookAccessRepository, UserNotebookAccessRepository>();
         services.AddScoped<IWorkspaceRepository, WorkspaceRepository>();
         services.AddScoped<IAiAssistMessageRepository, AiAssistMessageRepository>();
         services.AddScoped<IAiAssistSessionRepository, AiAssistSessionRepository>();
@@ -48,6 +50,7 @@ internal static class IoCConfigurator
         services.AddScoped<IAiSqlBackend, AiSqlHttpBackend>();
         services.AddScoped<IAiSqlService, DAP.SqlNotebook.BL.Services.AiSql.AiSqlService>();
         services.AddScoped<INotebookManager, NotebookManager>();
+        services.AddScoped<INotebookAccessManager, NotebookAccessManager>();
         
         services.AddSingleton<IMapper>(_ => new AutoMapper.Mapper(new MapperConfiguration(conf =>
         {

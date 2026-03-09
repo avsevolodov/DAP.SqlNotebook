@@ -1,4 +1,5 @@
 using System.Text;
+using DAP.SqlNotebook.Contract.Entities;
 
 namespace DAP.SqlNotebook.Service.Client
 {
@@ -44,7 +45,8 @@ namespace DAP.SqlNotebook.Service.Client
            int offset = 0,
            int batchSize = 100,
            string? queryFilter = null,
-           Guid? workspaceId = null)
+           Guid? workspaceId = null,
+           NotebookStatusInfo? status = null)
         {
             var sb = new StringBuilder(Notebooks);
             sb.Append("?batchSize=").Append(batchSize)
@@ -60,8 +62,20 @@ namespace DAP.SqlNotebook.Service.Client
                 sb.Append("&workspaceId=").Append(workspaceId.Value.ToString("N"));
             }
 
+            if (status.HasValue)
+            {
+                sb.Append("&status=").Append(status.Value.ToString());
+            }
+
             return sb.ToString();
         }
+
+        public static string SetNotebookStatusRoute(Guid notebookId) => $"{Notebooks}/{notebookId:N}/status";
+
+        public static string NotebookAccessRoute(Guid notebookId) => $"{Notebooks}/{notebookId:N}/access";
+
+        public static string NotebookAccessEntryRoute(Guid notebookId, string userLogin)
+            => $"{Notebooks}/{notebookId:N}/access/{Uri.EscapeDataString(userLogin ?? "")}";
 
         public static string GetNotebookByIdRoute(Guid notebookId)
             => $"{Notebooks}/{notebookId}";

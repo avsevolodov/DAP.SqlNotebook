@@ -9,7 +9,8 @@ public interface INotebookManager
         string? queryFilter = null,
         int offset = 0,
         int batchSize = 100,
-        Guid? workspaceId = null);
+        Guid? workspaceId = null,
+        NotebookStatusInfo? status = null);
 
     Task<NotebookInfo?> GetNotebook(Guid notebookId, CancellationToken ct);
 
@@ -17,7 +18,13 @@ public interface INotebookManager
 
     Task<NotebookInfo> UpdateNotebook(Guid id, NotebookInfo notebook, CancellationToken ct);
 
+    Task SetNotebookStatus(Guid id, NotebookStatusInfo status, CancellationToken ct);
+
     Task DeleteNotebook(Guid id, CancellationToken ct);
 
     Task<NotebookCellExecutionResultInfo> ExecuteQuery(Guid notebookId, string query, CancellationToken ct, int? commandTimeoutSeconds = null, Guid? catalogNodeId = null);
+
+    Task<NotebookAccessResponse> GetNotebookAccess(Guid notebookId, CancellationToken ct);
+    Task SetNotebookAccess(Guid notebookId, IReadOnlyList<NotebookAccessEntryInfo> entries, CancellationToken ct);
+    Task RemoveNotebookAccess(Guid notebookId, string userLogin, CancellationToken ct);
 }

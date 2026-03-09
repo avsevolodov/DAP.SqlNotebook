@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=Your_strong_Password123
+    ports:
+      - "14333:1433"
+    networks:
+      - sqlnotebook-net
+
+  sqlnotebook:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__SqlNotebook=Server=sqlserver;Database=SqlNotebook;User Id=sa;Password=Your_strong_Password123;TrustServerCertificate=True;
+    depends_on:
+      - sqlserver
+    ports:
+      - "5175:5175"
+    networks:
+      - sqlnotebook-net
+
+  ai-sql-service:
+    build:
+      context: ./ai-sql-service
+      dockerfile: Dockerfile
+    environment:
+      - PORT=8000
+      - LLM_API_URL=http://ollama:11434/v1
+      - LLM_API_KEY=ollama
+      - LLM_MODEL=tinyllama
+      - LLM_AUTOCOMPLETE_MODEL=tinyllama
+      - SCHEMA_API_URL=http://sqlnotebook:5175/api/v1/schema
+    ports:
+      - "8000:8000"
+    networks:
+      - sqlnotebook-net
+
+networks:
+  sqlnotebook-net:
+    driver: bridge
+

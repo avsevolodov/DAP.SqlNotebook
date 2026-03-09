@@ -16,10 +16,15 @@
 <PageTitle>Workspaces</PageTitle>
 
 <MudPaper Class="pa-4">
-    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4" Spacing="2">
-        <MudText Typo="Typo.h5">My workspaces</MudText>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadWorkspaces">Reload</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="OpenCreateDialog">New workspace</MudButton>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4" Spacing="2" Wrap="Wrap.Wrap">
+        <MudText Typo="Typo.h5">Workspace</MudText>
+        <MudTextField T="string" @bind-Value="_workspaceSearch" Placeholder="Search…" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true" Style="max-width: 240px;" Immediate="true" />
+        <MudButtonGroup Variant="Variant.Outlined" Size="Size.Small">
+            <MudButton Color="@(_workspaceViewMode == WorkspaceViewMode.Cards ? Color.Primary : Color.Default)" OnClick="@(() => _workspaceViewMode = WorkspaceViewMode.Cards)" StartIcon="@Icons.Material.Filled.ViewModule" title="Cards">Cards</MudButton>
+            <MudButton Color="@(_workspaceViewMode == WorkspaceViewMode.Grid ? Color.Primary : Color.Default)" OnClick="@(() => _workspaceViewMode = WorkspaceViewMode.Grid)" StartIcon="@Icons.Material.Filled.ViewList" title="List">List</MudButton>
+        </MudButtonGroup>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadWorkspaces">Refresh</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="OpenCreateDialog">Create</MudButton>
     </MudStack>
 
     @if (_loading)
@@ -27,26 +32,67 @@
         <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-2" />
     }
 
-    <MudGrid Class="mt-4">
-        @foreach (var row in _myWorkspacesGrid)
-        {
-            <MudItem xs="12" sm="6" md="4" lg="3">
-                <MudCard Class="fill-height" Elevation="2">
-                    <MudCardHeader>
-                        <MudLink Href="@MainRoutes.GetNotebooksRoute(row.Id)" Typo="Typo.h6" Style="font-weight: 500;">@row.Name</MudLink>
-                    </MudCardHeader>
-                    <MudCardContent Class="pt-0">
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">@(row.Description ?? "—")</MudText>
-                    </MudCardContent>
-                    <MudCardActions>
-                        <MudIconButton Icon="@Icons.Material.Filled.List" Href="@MainRoutes.GetNotebooksRoute(row.Id)" Title="Notebooks" Size="Size.Small" />
-                        <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@(() => OpenEditDialog(row))" Title="Edit" Size="Size.Small" />
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="@(() => ConfirmDelete(row))" Title="Delete" Color="Color.Error" Size="Size.Small" />
-                    </MudCardActions>
-                </MudCard>
-            </MudItem>
-        }
-    </MudGrid>
+    @if (_workspaceViewMode == WorkspaceViewMode.Cards)
+    {
+        <MudGrid Class="mt-4">
+            @foreach (var row in _myWorkspacesGrid)
+            {
+                <MudItem xs="12" sm="6" md="4" lg="3">
+                    <MudCard Class="fill-height" Elevation="2">
+                        <MudCardHeader>
+                            @if (!string.IsNullOrWhiteSpace(row.Icon))
+                            {
+                                <MudIcon Icon="@row.Icon" Class="mr-2" Size="Size.Small" />
+                            }
+                            <MudLink Href="@MainRoutes.GetNotebooksRoute(row.Id)" Typo="Typo.h6" Style="font-weight: 500;">@row.Name</MudLink>
+                        </MudCardHeader>
+                        <MudCardContent Class="pt-0">
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@(row.Description ?? "—")</MudText>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudIconButton Icon="@Icons.Material.Filled.List" Href="@MainRoutes.GetNotebooksRoute(row.Id)" Title="Notebooks" Size="Size.Small" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@(() => OpenEditDialog(row))" Title="Edit" Size="Size.Small" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="@(() => ConfirmDelete(row))" Title="Delete" Color="Color.Error" Size="Size.Small" />
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+    else
+    {
+        <MudSimpleTable Class="mt-4" Hover="true" Striped="true" Breakpoint="Breakpoint.Sm">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Description</th>
+                    <th>Owner</th>
+                    <th style="width:120px;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _myWorkspacesGrid)
+                {
+                    <tr>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(row.Icon))
+                            {
+                                <MudIcon Icon="@row.Icon" Size="Size.Small" Class="mr-1" />
+                            }
+                            <MudLink Href="@MainRoutes.GetNotebooksRoute(row.Id)" Typo="Typo.body1">@row.Name</MudLink>
+                        </td>
+                        <td><MudText Typo="Typo.body2" Color="Color.Secondary">@(row.Description ?? "—")</MudText></td>
+                        <td><MudText Typo="Typo.body2">@(row.OwnerLogin ?? "—")</MudText></td>
+                        <td>
+                            <MudIconButton Icon="@Icons.Material.Filled.List" Href="@MainRoutes.GetNotebooksRoute(row.Id)" Size="Size.Small" title="Notebooks" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@(() => OpenEditDialog(row))" Size="Size.Small" title="Edit" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="@(() => ConfirmDelete(row))" Size="Size.Small" Color="Color.Error" title="Delete" />
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
 
     @if (!_loading && _myWorkspacesGrid.Count == 0)
     {
@@ -63,6 +109,11 @@
             <MudSwitch @bind-Value="_editIsFolder" Label="Folder (for grouping only)" Color="Color.Primary" Class="mt-2" Disabled="@_isEdit" />
             <MudTextField @bind-Value="_editName" Label="Name" Variant="Variant.Outlined" Class="mt-2" Required />
             <MudTextField @bind-Value="_editDescription" Label="Description" Variant="Variant.Outlined" Class="mt-2" Lines="2" />
+            <MudTextField @bind-Value="_editIcon" Label="Icon (Material icon name, e.g. folder_special)" Variant="Variant.Outlined" Class="mt-2" Placeholder="folder" />
+            <MudSelect T="WorkspaceVisibilityInfo" @bind-Value="_editVisibility" Label="Visibility" Variant="Variant.Outlined" Class="mt-2">
+                <MudSelectItem T="WorkspaceVisibilityInfo" Value="@WorkspaceVisibilityInfo.Private">Private</MudSelectItem>
+                <MudSelectItem T="WorkspaceVisibilityInfo" Value="@WorkspaceVisibilityInfo.Public">Public</MudSelectItem>
+            </MudSelect>
             @if (_folderOptions.Count > 0)
             {
                 <MudSelect T="Guid?" @bind-Value="_editParentId" Label="Parent folder" Variant="Variant.Outlined" Class="mt-2" Clearable="true">
@@ -92,8 +143,16 @@
     private string? _editDescription;
     private bool _editIsFolder;
     private Guid? _editParentId;
+    private string? _editIcon;
+    private WorkspaceVisibilityInfo _editVisibility = WorkspaceVisibilityInfo.Private;
 
-    private List<WorkspaceInfo> _myWorkspacesGrid => _workspaces.Where(x => !x.IsFolder).ToList();
+    private string? _workspaceSearch;
+    private enum WorkspaceViewMode { Cards, Grid }
+    private WorkspaceViewMode _workspaceViewMode = WorkspaceViewMode.Cards;
+    private List<WorkspaceInfo> _myWorkspacesGrid => _workspaces
+        .Where(x => !x.IsFolder)
+        .Where(x => string.IsNullOrWhiteSpace(_workspaceSearch) || (x.Name?.Contains(_workspaceSearch!, StringComparison.OrdinalIgnoreCase) ?? false))
+        .ToList();
 
     protected override async Task OnInitializedAsync()
     {
@@ -128,6 +187,8 @@
         _editDescription = null;
         _editIsFolder = false;
         _editParentId = null;
+        _editIcon = null;
+        _editVisibility = WorkspaceVisibilityInfo.Private;
         _folderOptions = _workspaces.Where(x => x.IsFolder).OrderBy(x => x.Name).ToList();
         _showEditDialog = true;
     }
@@ -140,6 +201,8 @@
         _editDescription = ws.Description;
         _editIsFolder = ws.IsFolder;
         _editParentId = ws.ParentId;
+        _editIcon = ws.Icon;
+        _editVisibility = ws.Visibility;
         _folderOptions = _workspaces.Where(x => x.IsFolder && x.Id != ws.Id).OrderBy(x => x.Name).ToList();
         _showEditDialog = true;
     }
@@ -173,6 +236,8 @@
                     Description = string.IsNullOrWhiteSpace(_editDescription) ? null : _editDescription.Trim(),
                     ParentId = _editParentId,
                     IsFolder = _editIsFolder,
+                    Icon = string.IsNullOrWhiteSpace(_editIcon) ? null : _editIcon.Trim(),
+                    Visibility = _editVisibility,
                 }, CancellationToken.None);
                 SnackbarExtensions.ShowPopupMessage(Snackbar, "Workspace updated.", Severity.Success);
             }
@@ -184,6 +249,8 @@
                     Description = string.IsNullOrWhiteSpace(_editDescription) ? null : _editDescription.Trim(),
                     ParentId = _editParentId,
                     IsFolder = _editIsFolder,
+                    Icon = string.IsNullOrWhiteSpace(_editIcon) ? null : _editIcon.Trim(),
+                    Visibility = _editVisibility,
                 }, CancellationToken.None);
                 SnackbarExtensions.ShowPopupMessage(Snackbar, "Workspace created.", Severity.Success);
                 _showEditDialog = false;

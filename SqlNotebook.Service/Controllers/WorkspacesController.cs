@@ -70,6 +70,8 @@ public class WorkspacesController : ControllerBase
             OwnerLogin = login,
             ParentId = model?.ParentId,
             IsFolder = model?.IsFolder ?? false,
+            Icon = model?.Icon,
+            Visibility = model?.Visibility != null ? (int)model.Visibility : 0,
         };
         if (string.IsNullOrWhiteSpace(entity.Name))
             return BadRequest("Name is required.");
@@ -92,6 +94,8 @@ public class WorkspacesController : ControllerBase
         existing.Description = string.IsNullOrWhiteSpace(model.Description) ? null : model.Description.Trim();
         existing.ParentId = model.ParentId;
         existing.IsFolder = model.IsFolder;
+        existing.Icon = model.Icon;
+        existing.Visibility = (int)model.Visibility;
         await _workspaceRepository.UpdateAsync(existing, ct).ConfigureAwait(false);
         return Ok(_mapper.Map<WorkspaceInfo>(existing));
     }

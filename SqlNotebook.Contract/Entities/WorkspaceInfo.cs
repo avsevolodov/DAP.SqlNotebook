@@ -1,3 +1,7 @@
+using System.Text.Json.Serialization;
+
+namespace DAP.SqlNotebook.Contract.Entities;
+
 public class WorkspaceInfo
 {
     public Guid Id { get; set; }
@@ -8,4 +12,9 @@ public class WorkspaceInfo
     public Guid? ParentId { get; set; }
     /// <summary>True = folder (container), false = workspace (notebooks).</summary>
     public bool IsFolder { get; set; }
+    /// <summary>Optional icon name (e.g. Material icon or emoji).</summary>
+    public string? Icon { get; set; }
+    /// <summary>Visibility: Private (only owner) or Public.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public WorkspaceVisibilityInfo Visibility { get; set; } = WorkspaceVisibilityInfo.Private;
 }

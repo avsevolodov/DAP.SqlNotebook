@@ -14,7 +14,7 @@ else if (Result.Columns != null && Result.Columns.Length > 0)
 {
     var columns = Result.Columns;
     var chartData = GetChartData(Result);
-    var showChart = chartData != null && !string.IsNullOrEmpty(Result.ChartType) && Result.ChartType != "table";
+    var showChart = !ForceTable && chartData != null && !string.IsNullOrEmpty(Result.ChartType) && Result.ChartType != "table";
     if (showChart && chartData != null)
     {
         var chartHeight = MaxHeight > 0 ? MaxHeight + "px" : "300px";
@@ -60,6 +60,7 @@ else
 @code {
     [Parameter] public NotebookCellExecutionResultInfo? Result { get; set; }
     [Parameter] public int MaxHeight { get; set; }
+    [Parameter] public bool ForceTable { get; set; }
 
     private sealed class ChartData
     {

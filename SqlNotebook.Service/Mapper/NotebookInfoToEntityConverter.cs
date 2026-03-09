@@ -25,6 +25,7 @@ public sealed class NotebookInfoToEntityConverter : ITypeConverter<NotebookInfo,
                 Content = c.Content ?? string.Empty,
                 ExecutionResultJson = SerializeExecutionResult(c.ExecutionResult),
                 CreatedBy = c.CreatedBy,
+                Title = c.Title,
                 CatalogNodeId = c.CatalogNodeId,
                 DatabaseDisplayName = c.DatabaseDisplayName,
             })
@@ -38,10 +39,22 @@ public sealed class NotebookInfoToEntityConverter : ITypeConverter<NotebookInfo,
             CatalogNodeId = source.CatalogNodeId,
             CatalogNodeDisplayName = source.CatalogNodeDisplayName,
             NotebookType = (int)source.NotebookType,
+            Status = (int)source.Status,
+            TagsJson = SerializeTags(source.Tags),
             CreatedBy = source.CreatedBy,
             UpdatedBy = source.UpdatedBy,
             Cells = cells,
         };
+    }
+
+    private static string? SerializeTags(List<string>? tags)
+    {
+        if (tags == null || tags.Count == 0) return null;
+        try
+        {
+            return System.Text.Json.JsonSerializer.Serialize(tags);
+        }
+        catch { return null; }
     }
 
     private static string? SerializeExecutionResult(NotebookCellExecutionResultInfo? result)

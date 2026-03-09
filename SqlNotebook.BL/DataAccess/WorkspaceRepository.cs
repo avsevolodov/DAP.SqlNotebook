@@ -64,6 +64,8 @@ public sealed class WorkspaceRepository : IWorkspaceRepository
         existing.Description = entity.Description;
         existing.ParentId = entity.ParentId;
         existing.IsFolder = entity.IsFolder;
+        existing.Icon = entity.Icon;
+        existing.Visibility = entity.Visibility;
         if (entity.OwnerLogin != null)
             existing.OwnerLogin = entity.OwnerLogin;
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);

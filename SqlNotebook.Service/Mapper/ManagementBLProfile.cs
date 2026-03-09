@@ -30,7 +30,7 @@ namespace DAP.SqlNotebook.Service.Mapper
             CreateMap<SuggestChartRequestInfo, SuggestChartRequest>();
             CreateMap<SuggestChartResult, SuggestChartResponseInfo>();
 
-            CreateMap<NotebookEntity, NotebookMetaInfo>();
+            CreateMap<NotebookEntity, NotebookMetaInfo>().ConvertUsing<NotebookEntityToMetaInfoConverter>();
             CreateMap<NotebookEntity, NotebookInfo>().ConvertUsing<NotebookEntityToInfoConverter>();
             CreateMap<NotebookInfo, NotebookEntity>().ConvertUsing<NotebookInfoToEntityConverter>();
         }

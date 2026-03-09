@@ -5,6 +5,7 @@
 // =================================================
 
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace DAP.SqlNotebook.Contract.Entities
 {
@@ -21,6 +22,13 @@ namespace DAP.SqlNotebook.Contract.Entities
 
         /// <summary>Тип ноутбука: БД или Generic.</summary>
         public NotebookTypeInfo NotebookType { get; set; } = NotebookTypeInfo.Db;
+
+        /// <summary>Status: Active, Archived, or Trash.</summary>
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public NotebookStatusInfo Status { get; set; } = NotebookStatusInfo.Active;
+
+        /// <summary>Optional tags for filtering/organization.</summary>
+        public List<string>? Tags { get; set; }
 
         public string? CreatedBy { get; set; }
         public string? UpdatedBy { get; set; }

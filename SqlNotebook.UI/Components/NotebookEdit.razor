@@ -14,35 +14,60 @@
     @* Cells list *@
     @if (Notebook?.Cells != null && Notebook.Cells.Count > 0)
     {
+        var _cellsList = Notebook.Cells.ToList();
         <MudStack Spacing="2" Class="mb-4">
-            @foreach (var cell in Notebook.Cells)
+            @for (var idx = 0; idx < _cellsList.Count; idx++)
             {
-                @if (cell.Type == NotebookCellTypeInfo.Markdown)
-                {
-                    <div class="d-flex align-items-start pa-2" style="gap: 8px;">
-                        <div class="flex-grow-1"><MudMarkdown Value="@cell.Content" Props="@GetMarkdownProps()" /></div>
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Title="Delete cell" OnClick="@(() => OnDeleteCell.InvokeAsync(cell))" />
+                var cell = _cellsList[idx];
+                var cellIndex = idx;
+                <div id="@($"notebook-cell-{cellIndex}")" class="notebook-cell-wrapper">
+                    <div class="d-flex align-items-stretch" style="gap: 8px;">
+                        <div class="flex-grow-1">
+                            @if (cell.Type == NotebookCellTypeInfo.Markdown)
+                            {
+                                <NotebookMarkdownCell Cell="cell"
+                                                      OnDeleteCell="OnDeleteCell" />
+                            }
+                            else if (cell.Type == NotebookCellTypeInfo.Sql || cell.Type == NotebookCellTypeInfo.Chart)
+                            {
+                                <NotebookCodeCell Cell="cell"
+                                                  NotebookId="@NotebookId"
+                                                  QueryTimeoutSeconds="@QueryTimeoutSeconds"
+                                                  SelectedDatabase="@SelectedDatabase"
+                                                  OnChartTypeChanged="OnChartTypeChanged"
+                                                  OnFormatCell="OnFormatCell"
+                                                  OnDeleteCell="OnDeleteCell"
+                                                  OnInsertIntoEditor="OnInsertIntoEditor"
+                                                  OnCellUpdated="OnCellUpdated" />
+                            }
+                            else if (cell.Type == NotebookCellTypeInfo.Excalidraw)
+                            {
+                                <NotebookExcalidrawCell Cell="cell"
+                                                        OnDeleteCell="OnDeleteCell"
+                                                        OnExcalidrawContentChanged="OnExcalidrawContentChanged"
+                                                        OnSaveRequested="OnExcalidrawSaveRequested" />
+                            }
+                            else if (cell.Type == NotebookCellTypeInfo.Mermaid)
+                            {
+                                <NotebookMermaidCell Cell="cell"
+                                                     OnDeleteCell="OnDeleteCell"
+                                                     OnContentChanged="OnMermaidContentChanged" />
+                            }
+                        </div>
+                        <MudStack Spacing="1" AlignItems="AlignItems.Center" Class="notebook-cell-move-controls">
+                            <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward"
+                                           Size="Size.Small"
+                                           Disabled="@(cellIndex == 0)"
+                                           Title="Move up"
+                                           OnClick="@(() => MoveCellUp(cellIndex))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward"
+                                           Size="Size.Small"
+                                           Disabled="@(cellIndex == _cellsList.Count - 1)"
+                                           Title="Move down"
+                                           OnClick="@(() => MoveCellDown(cellIndex))" />
+                        </MudStack>
                     </div>
-                }
-                else if (cell.Type == NotebookCellTypeInfo.Sql || cell.Type == NotebookCellTypeInfo.Chart)
-                {
-                    <NotebookCodeCell Cell="cell"
-                                              NotebookId="@NotebookId"
-                                              QueryTimeoutSeconds="@QueryTimeoutSeconds"
-                                              SelectedDatabase="@SelectedDatabase"
-                                              OnChartTypeChanged="OnChartTypeChanged"
-                                              OnFormatCell="OnFormatCell"
-                                              OnDeleteCell="OnDeleteCell"
-                                              OnInsertIntoEditor="OnInsertIntoEditor"
-                                              OnCellUpdated="OnCellUpdated" />
-                }
-                else if (cell.Type == NotebookCellTypeInfo.Excalidraw)
-                {
-                    <NotebookExcalidrawCell Cell="cell"
-                                            OnDeleteCell="OnDeleteCell"
-                                            OnExcalidrawContentChanged="OnExcalidrawContentChanged"
-                                            OnSaveRequested="OnExcalidrawSaveRequested" />
-                }
+                </div>
             }
         </MudStack>
     }
@@ -104,18 +129,20 @@
             }
             @if (_activeEditor == EditorMode.Sql)
             {
-                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">Новая ячейка — редактор запроса</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">New cell — query editor</MudText>
                 <div id="@_editorElementId" class="sql-notebook-editor-container"></div>
                 <MudMenu Open="_addCellMenuOpen" OpenChanged="e => _addCellMenuOpen = e" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
                     <ActivatorContent>
                         <MudButton Variant="@(CurrentRunResult != null ? Variant.Filled : Variant.Outlined)" Color="@(CurrentRunResult != null ? Color.Primary : Color.Default)" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _addCellMenuOpen = true)" Class="mt-2">
-                            @(CurrentRunResult != null ? "Добавить ячейку (сохранить результат)" : "Добавить ячейку")
+                            @(CurrentRunResult != null ? "Add cell (save result)" : "Add cell")
                         </MudButton>
                     </ActivatorContent>
                     <ChildContent>
                         <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Sql))" Icon="@Icons.Material.Filled.Code">SQL</MudMenuItem>
                         <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Markdown))" Icon="@Icons.Material.Filled.TextFields">Markdown</MudMenuItem>
                         <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Chart))" Icon="@Icons.Material.Filled.BarChart">Chart</MudMenuItem>
+                        <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Mermaid))" Icon="@Icons.Material.Filled.AccountTree">Mermaid</MudMenuItem>
+                        <MudMenuItem OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Excalidraw))" Icon="@Icons.Material.Filled.Gesture">Diagram</MudMenuItem>
                     </ChildContent>
                 </MudMenu>
                 @if (CurrentRunResult != null)
@@ -127,7 +154,7 @@
             }
             else if (_activeEditor == EditorMode.Excalidraw)
             {
-                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">Новая ячейка — Excalidraw</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">New cell — Excalidraw</MudText>
                 <div class="notebook-excalidraw-wrap" style="height: 400px; min-height: 300px;">
                     <iframe id="@_excalidrawEditorIframeId"
                             src="excalidraw/embed.html"
@@ -140,7 +167,7 @@
                            StartIcon="@Icons.Material.Filled.Add"
                            OnClick="@(() => HandleAddCell(NotebookCellTypeInfo.Excalidraw))"
                            Class="mt-2">
-                    Добавить ячейку (Excalidraw)
+                    Add cell (Excalidraw)
                 </MudButton>
             }
         </MudStack>
@@ -171,6 +198,8 @@
     [Parameter] public EventCallback<(int CellId, string FormattedContent)> OnFormatCell { get; set; }
     [Parameter] public EventCallback<(int CellId, string Content)> OnExcalidrawContentChanged { get; set; }
     [Parameter] public EventCallback<int> OnExcalidrawSaveRequested { get; set; }
+    [Parameter] public EventCallback<string?> OnExcalidrawEditorContentChanged { get; set; }
+    [Parameter] public EventCallback<(int CellId, string Content)> OnMermaidContentChanged { get; set; }
     [Parameter] public EventCallback<NotebookCellInfo> OnDeleteCell { get; set; }
     [Parameter] public EventCallback OnCellUpdated { get; set; }
 
@@ -204,6 +233,32 @@
             _selectTopLocal = SelectTopCount;
             CatalogInsertService.SelectTopCount = SelectTopCount;
         }
+    }
+
+    private async Task MoveCellUp(int index)
+    {
+        if (Notebook?.Cells == null || index <= 0 || index >= Notebook.Cells.Count)
+            return;
+        var list = Notebook.Cells.ToList();
+        var item = list[index];
+        list.RemoveAt(index);
+        list.Insert(index - 1, item);
+        Notebook.Cells = list;
+        if (OnCellUpdated.HasDelegate)
+            await OnCellUpdated.InvokeAsync();
+    }
+
+    private async Task MoveCellDown(int index)
+    {
+        if (Notebook?.Cells == null || index < 0 || index >= Notebook.Cells.Count - 1)
+            return;
+        var list = Notebook.Cells.ToList();
+        var item = list[index];
+        list.RemoveAt(index);
+        list.Insert(index + 1, item);
+        Notebook.Cells = list;
+        if (OnCellUpdated.HasDelegate)
+            await OnCellUpdated.InvokeAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -291,15 +346,16 @@
     [JSInvokable]
     public async Task OnExcalidrawEditorChange(string content)
     {
-        // В текущей версии храним содержимое редактора только на стороне Notebook (через SqlEditorContent / AddCell),
-        // поэтому здесь достаточно обновить локальное состояние, если понадобится.
-        await Task.CompletedTask;
+        if (OnExcalidrawEditorContentChanged.HasDelegate)
+        {
+            await OnExcalidrawEditorContentChanged.InvokeAsync(content);
+        }
     }
 
     [JSInvokable]
     public async Task OnExcalidrawEditorReady()
     {
-        // При необходимости можно отправить в редактор ранее сохранённое состояние.
+        // If needed, we can send previously saved state back to the editor.
         await Task.CompletedTask;
     }
 
@@ -325,7 +381,24 @@
         _addCellMenuOpen = false;
         await FlushEditorContent();
         if (OnAddCell.HasDelegate)
+        {
             await OnAddCell.InvokeAsync(cellType);
+        }
+
+        if (cellType == NotebookCellTypeInfo.Excalidraw)
+        {
+            try
+            {
+                // Clear the main Excalidraw editor content after creating a cell
+                await JS.InvokeVoidAsync("sqlNotebookExcalidraw.sendContent", _excalidrawEditorIframeId, "{}");
+                if (OnExcalidrawEditorContentChanged.HasDelegate)
+                    await OnExcalidrawEditorContentChanged.InvokeAsync(null);
+            }
+            catch
+            {
+                // Ignore errors while clearing the editor (e.g. when not visible)
+            }
+        }
     }
 
     private async Task HandleFormatSql()

@@ -33,7 +33,7 @@
                 <MudMenuItem Href="@(Node.EntityId.HasValue ? MainRoutes.GetTableRoute(Node.EntityId.Value) : null)" OnClick="@(() => _tableMenuOpen = false)">Open table</MudMenuItem>
                 <MudMenuItem OnClick="@(async () => { await InsertName(); _tableMenuOpen = false; })">Insert table name</MudMenuItem>
                 <MudMenuItem OnClick="@(async () => { await InsertPreview(); _tableMenuOpen = false; })">Preview (SELECT … LIMIT 10)</MudMenuItem>
-                <MudMenuItem OnClick="@(async () => { await InsertDescription(); _tableMenuOpen = false; })">Посмотреть описание таблицы</MudMenuItem>
+                <MudMenuItem OnClick="@(async () => { await InsertDescription(); _tableMenuOpen = false; })">View table description</MudMenuItem>
             </ChildContent>
         </MudMenu>
         @if (CanExpand && IsExpanded && GetFieldsFunc != null && Node.EntityId.HasValue)

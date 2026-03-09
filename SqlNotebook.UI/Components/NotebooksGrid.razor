@@ -20,16 +20,16 @@
                 <MudStack Spacing="4" AlignItems="AlignItems.Center">
                     <MudIcon Icon="@Icons.Material.Filled.MenuBook" Size="Size.Large" Color="Color.Primary" Style="font-size: 64px; opacity: 0.9;" />
                     <MudStack Spacing="1">
-                        <MudText Typo="Typo.h5">@(WorkspaceId.HasValue ? "В этом workspace пока нет блокнотов" : "Создайте первый notebook")</MudText>
+                        <MudText Typo="Typo.h5">@(WorkspaceId.HasValue ? "Add your first item" : "Create the first notebook")</MudText>
                         <MudText Typo="Typo.body1" Color="Color.Secondary">
                             @(WorkspaceId.HasValue
-                                ? "Добавьте notebook, чтобы сохранять и выполнять SQL-запросы в контексте этой рабочей области."
-                                : "Выберите workspace и создайте notebook, чтобы начать работу с SQL-запросами и визуализацией данных.")
+                                ? "Create a notebook in this workspace to store queries and diagrams."
+                                : "Select a workspace and create a notebook to start working with SQL queries and data visualizations.")
                         </MudText>
                     </MudStack>
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" StartIcon="@Icons.Material.Filled.Add"
                                OnClick="GoToNewNotebook" Class="mt-2">
-                        Создать первый notebook
+                        Create first notebook
                     </MudButton>
                 </MudStack>
             </MudPaper>
@@ -50,6 +50,11 @@
                 }
             </MudSelect>
         }
+        <MudButtonGroup Variant="Variant.Outlined" Size="Size.Small">
+            <MudButton Color="@(_selectedStatus == NotebookStatusInfo.Active ? Color.Primary : Color.Default)" OnClick="@(() => SetStatusFilter(NotebookStatusInfo.Active))">Active</MudButton>
+            <MudButton Color="@(_selectedStatus == NotebookStatusInfo.Archived ? Color.Primary : Color.Default)" OnClick="@(() => SetStatusFilter(NotebookStatusInfo.Archived))">Archive</MudButton>
+            <MudButton Color="@(_selectedStatus == NotebookStatusInfo.Trash ? Color.Primary : Color.Default)" OnClick="@(() => SetStatusFilter(NotebookStatusInfo.Trash))">Trash</MudButton>
+        </MudButtonGroup>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Reload">Reload</MudButton>
         <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="GoToNewNotebook">New notebook</MudButton>
         @if (!WorkspaceId.HasValue)
@@ -99,10 +104,42 @@
                     </CellTemplate>
                 </TemplateColumn>
             }
+            <TemplateColumn T="NotebookMetaInfo" Title="Tags" Sortable="false">
+                <CellTemplate Context="ctx">
+                    @if (ctx.Item.Tags != null && ctx.Item.Tags.Count > 0)
+                    {
+                        @foreach (var tag in ctx.Item.Tags.Take(3))
+                        {
+                            <MudChip T="string" Size="Size.Small" Class="mr-1">@tag</MudChip>
+                        }
+                        @if (ctx.Item.Tags.Count > 3)
+                        { <MudChip T="string" Size="Size.Small">+@(ctx.Item.Tags.Count - 3)</MudChip> }
+                    }
+                    else
+                    { <span class="mud-typography-body2">—</span> }
+                </CellTemplate>
+            </TemplateColumn>
             <TemplateColumn T="NotebookMetaInfo" Title="Actions" Sortable="false" Hideable="false">
                 <CellTemplate Context="ctx">
+                    <MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" Color="Color.Default" OnClick="@(() => ShowAccessPlaceholder(ctx.Item))" title="Access" />
                     <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Color="Color.Default" OnClick="@(() => CloneNotebook(ctx.Item))" title="Clone notebook" />
-                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Default" OnClick="@(() => ConfirmDeleteNotebook(ctx.Item))" title="Delete notebook" />
+                    @if (_selectedStatus == NotebookStatusInfo.Trash)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small" Color="Color.Default" OnClick="@(() => MoveToStatus(ctx.Item, NotebookStatusInfo.Active))" title="Restore" />
+                        <MudIconButton Icon="@Icons.Material.Filled.DeleteForever" Size="Size.Small" Color="Color.Error" OnClick="@(() => ConfirmDeleteNotebook(ctx.Item))" title="Delete permanently" />
+                    }
+                    else
+                    {
+                        @if (_selectedStatus == NotebookStatusInfo.Active)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Archive" Size="Size.Small" Color="Color.Default" OnClick="@(() => MoveToStatus(ctx.Item, NotebookStatusInfo.Archived))" title="Archive" />
+                        }
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Default" OnClick="@(() => MoveToTrash(ctx.Item))" title="Move to trash" />
+                        @if (_selectedStatus == NotebookStatusInfo.Archived)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small" Color="Color.Default" OnClick="@(() => MoveToStatus(ctx.Item, NotebookStatusInfo.Active))" title="Restore" />
+                        }
+                    }
                 </CellTemplate>
             </TemplateColumn>
         </Columns>
@@ -273,11 +310,50 @@
         }
     }
 
+    private NotebookStatusInfo _selectedStatus = NotebookStatusInfo.Active;
+
+    private async Task SetStatusFilter(NotebookStatusInfo status)
+    {
+        _selectedStatus = status;
+        if (_grid is not null)
+            await _grid.ReloadServerData();
+    }
+
+    private async Task MoveToStatus(NotebookMetaInfo item, NotebookStatusInfo status)
+    {
+        try
+        {
+            await NotebookManager.SetNotebookStatus(item.Id, status, CancellationToken.None);
+            SnackbarExtensions.ShowPopupMessage(Snackbar, status == NotebookStatusInfo.Active ? "Restored." : "Status updated.", Severity.Success);
+            if (_grid is not null)
+                await _grid.ReloadServerData();
+        }
+        catch (Exception ex)
+        {
+            SnackbarExtensions.ShowPopupMessage(Snackbar, ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task MoveToTrash(NotebookMetaInfo item)
+    {
+        try
+        {
+            await NotebookManager.SetNotebookStatus(item.Id, NotebookStatusInfo.Trash, CancellationToken.None);
+            SnackbarExtensions.ShowPopupMessage(Snackbar, "Moved to trash.", Severity.Success);
+            if (_grid is not null)
+                await _grid.ReloadServerData();
+        }
+        catch (Exception ex)
+        {
+            SnackbarExtensions.ShowPopupMessage(Snackbar, ex.Message, Severity.Error);
+        }
+    }
+
     private async Task ConfirmDeleteNotebook(NotebookMetaInfo item)
     {
         var confirmed = await DialogService.ShowMessageBox(
-            "Delete notebook",
-            $"Delete notebook \"{item.Name}\"? This cannot be undone.",
+            "Delete permanently",
+            $"Delete notebook \"{item.Name}\" permanently? This action cannot be undone.",
             yesText: "Delete",
             cancelText: "Cancel");
         if (confirmed != true) return;
@@ -290,7 +366,7 @@
         }
         catch (Exception ex)
         {
-            SnackbarExtensions.ShowPopupMessage(Snackbar, $"Failed to delete: {ex.Message}", Severity.Error);
+            SnackbarExtensions.ShowPopupMessage(Snackbar, ex.Message, Severity.Error);
         }
     }
 
@@ -303,7 +379,8 @@
                 _searchString,
                 gridState.Page * gridState.PageSize,
                 gridState.PageSize,
-                _selectedWorkspaceId);
+                _selectedWorkspaceId,
+                _selectedStatus);
 
             _lastTotalCount = response.TotalCount;
             await InvokeAsync(StateHasChanged);
@@ -370,5 +447,41 @@
     private void GoToNewNotebook()
     {
         Navigation.NavigateTo(MainRoutes.GetNewNotebookRoute(WorkspaceId));
+    }
+
+    private async Task ShowAccessPlaceholder(NotebookMetaInfo item)
+    {
+        await OpenAccessDialog(item);
+    }
+
+    private async Task OpenAccessDialog(NotebookMetaInfo item)
+    {
+        try
+        {
+            var access = await NotebookManager.GetNotebookAccess(item.Id, CancellationToken.None);
+            var model = new NotebookAccessDialog.NotebookAccessDialogModel
+            {
+                NotebookId = item.Id,
+                NotebookName = item.Name ?? "Notebook",
+                Entries = access?.Entries?.ToList() ?? new List<NotebookAccessEntryInfo>()
+            };
+
+            var parameters = new DialogParameters
+            {
+                ["Model"] = model
+            };
+            var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+            var dialog = await DialogService.ShowAsync<NotebookAccessDialog>("Access", parameters, options);
+            var result = await dialog.Result;
+            if (!result.Canceled && result.Data is List<NotebookAccessEntryInfo> entries)
+            {
+                await NotebookManager.SetNotebookAccess(item.Id, entries, CancellationToken.None);
+                SnackbarExtensions.ShowPopupMessage(Snackbar, "Access updated.", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            SnackbarExtensions.ShowPopupMessage(Snackbar, ex.Message, Severity.Error);
+        }
     }
 }

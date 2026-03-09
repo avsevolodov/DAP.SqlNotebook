@@ -5,7 +5,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace DAP.SqlNotebook.BL.DataAccess.Entities
 {
     /// <summary>
-    /// Cell type: 0 = Sql, 1 = Markdown, 2 = Chart, 3 = Excalidraw.
+    /// Cell type: 0 = Sql, 1 = Markdown, 2 = Chart, 3 = Excalidraw, 4 = Mermaid.
     /// </summary>
     public enum NotebookCellTypeEntity
     {
@@ -13,6 +13,7 @@ namespace DAP.SqlNotebook.BL.DataAccess.Entities
         Markdown = 1,
         Chart = 2,
         Excalidraw = 3,
+        Mermaid = 4,
     }
 
     [Table("NotebookCells")]
@@ -42,6 +43,12 @@ namespace DAP.SqlNotebook.BL.DataAccess.Entities
         /// JSON-serialized execution result (NotebookCellExecutionResultInfo).
         /// </summary>
         public string? ExecutionResultJson { get; set; }
+
+        /// <summary>
+        /// Optional human-friendly title shown in notebook TOC.
+        /// </summary>
+        [MaxLength(256)]
+        public string? Title { get; set; }
 
         /// <summary>
         /// Database (catalog node) used when this cell was executed.

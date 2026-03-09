@@ -21,5 +21,8 @@ namespace DAP.SqlNotebook.Contract.Entities
 
         [EnumMember(Value = @"Excalidraw")]
         Excalidraw = 3,
+
+        [EnumMember(Value = @"Mermaid")]
+        Mermaid = 4,
     }
 }

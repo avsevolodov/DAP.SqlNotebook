@@ -11,20 +11,71 @@
 <MudPaper Class="pa-3 notebook-cell-paper" Elevation="1" Outlined="true">
     <MudStack Spacing="1">
         <div class="notebook-cell-code-frame notebook-cell-header-section">
-            <div class="notebook-cell-code-header">
+            <div class="notebook-cell-code-header d-flex align-items-center flex-wrap" style="gap: 6px;">
+                @* Common: collapse *@
                 <MudIconButton Icon="@(_collapsed ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ExpandLess)"
-                               Size="Size.Small" Title="@(_collapsed ? "Развернуть" : "Свернуть")" OnClick="ToggleCollapsed" />
-            </div>
-            @if (!_collapsed)
-            {
-                <pre class="notebook-cell-code mud-typography mud-typography-body2"><code class="language-sql">@Cell.Content</code></pre>
-                <div class="notebook-cell-code-actions">
-                    <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" Title="Rerun" OnClick="RunCell" Disabled="@_running" />
+                               Size="Size.Small" Title="@(_collapsed ? "Expand" : "Collapse")" OnClick="ToggleCollapsed" />
+                <MudTextField T="string"
+                              @bind-Value="Cell.Title"
+                              Placeholder="Cell title (optional)"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Class="ml-2"
+                              Style="max-width: 260px;"
+                              Immediate="true"
+                              OnBlur="OnCellUpdated" />
+                @if (!string.IsNullOrWhiteSpace(Cell.DatabaseDisplayName))
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="notebook-cell-db-chip">@Cell.DatabaseDisplayName</MudChip>
+                }
+                <div class="flex-grow-1"></div>
+                @* Type-specific: Run, Copy, Paste to editor, Format; Line numbers; Result view; Delete on the right *@
+                @if (!_collapsed)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" Title="Run" OnClick="RunCell" Disabled="@_running" />
                     <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Title="Copy" OnClick="@(() => CopyContent(Cell.Content))" />
                     <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Title="Paste to editor" OnClick="@(() => PasteToEditor(Cell.Content))" />
                     <MudIconButton Icon="@Icons.Material.Filled.FormatAlignLeft" Size="Size.Small" Title="Format" OnClick="@(() => FormatCell())" />
-                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Title="Delete cell" OnClick="DeleteCell" />
-                </div>
+
+                    <MudIconButton Icon="@Icons.Material.Filled.FormatListNumbered"
+                                   Size="Size.Small"
+                                   Color="@(_showLineNumbers ? Color.Primary : Color.Default)"
+                                   Title="@(_showLineNumbers ? "Hide line numbers" : "Show line numbers")"
+                                   OnClick="@ToggleLineNumbers" />
+
+                    @if (Cell.Type == NotebookCellTypeInfo.Sql && Cell.ExecutionResult != null && Cell.ExecutionResult.Columns != null && Cell.ExecutionResult.Columns.Length > 0)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.TableChart"
+                                       Size="Size.Small"
+                                       Color="@(_resultView == ResultViewMode.Table ? Color.Primary : Color.Default)"
+                                       Title="Table view"
+                                       OnClick="@(() => _resultView = ResultViewMode.Table)" />
+                        <MudIconButton Icon="@Icons.Material.Filled.BarChart"
+                                       Size="Size.Small"
+                                       Color="@(_resultView == ResultViewMode.Charts ? Color.Primary : Color.Default)"
+                                       Title="Charts view"
+                                       OnClick="@(() => _resultView = ResultViewMode.Charts)" />
+                    }
+
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" Title="Delete cell" OnClick="DeleteCell" />
+                }
+            </div>
+            @if (!_collapsed)
+            {
+                @if (_showLineNumbers)
+                {
+                    <pre class="notebook-cell-code mud-typography mud-typography-body2">
+@foreach (var line in GetCodeLines())
+{
+@($"{line.Number,4}: {line.Text}")
+@("\n")
+}
+                    </pre>
+                }
+                else
+                {
+                    <pre class="notebook-cell-code mud-typography mud-typography-body2"><code class="language-sql">@Cell.Content</code></pre>
+                }
             }
             else
             {
@@ -58,7 +109,9 @@
                 {
                     <MudAlert Severity="Severity.Error" Class="mt-2" Dismissible="true" OnClose="ClearCellError">@_cellError</MudAlert>
                 }
-                <NotebookQueryResult Result="@Cell.ExecutionResult" MaxHeight="300" />
+                <NotebookQueryResult Result="@Cell.ExecutionResult"
+                                     MaxHeight="300"
+                                     ForceTable="@(Cell.Type == NotebookCellTypeInfo.Sql && _resultView == ResultViewMode.Table)" />
             </div>
         }
     </MudStack>
@@ -82,6 +135,27 @@
     private bool _running;
     private string? _cellError;
     private CancellationTokenSource? _runCts;
+
+    private enum ResultViewMode
+    {
+        Table,
+        Charts
+    }
+
+    private ResultViewMode _resultView = ResultViewMode.Table;
+
+    private bool _showLineNumbers;
+
+    private void ToggleLineNumbers() => _showLineNumbers = !_showLineNumbers;
+
+    private IReadOnlyList<(int Number, string Text)> GetCodeLines()
+    {
+        var text = Cell.Content ?? string.Empty;
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+        return lines
+            .Select((t, i) => (Number: i + 1, Text: t))
+            .ToList();
+    }
 
     private void ToggleCollapsed() => _collapsed = !_collapsed;
 

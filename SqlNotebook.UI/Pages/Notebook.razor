@@ -8,43 +8,81 @@
 @using DAP.SqlNotebook.Service.Client.V1
 @using DAP.SqlNotebook.UI.Components
 @using DAP.SqlNotebook.UI.Helpers
+@using DAP.SqlNotebook.UI.Services
 @using MudBlazor
-
+@using SnackbarExtensions = DAP.SqlNotebook.UI.Helpers.SnackbarExtensions
 @using Microsoft.JSInterop
 @implements IDisposable
 
 <PageTitle>@(IsNew ? "New notebook" : _notebook?.Name ?? "Notebook")</PageTitle>
 
-<MudPaper Class="pa-4">
-    @if (_loading)
-    {
+@if (_loading)
+{
+    <MudPaper Class="pa-4">
         <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
-    }
-
-    @if (!_loading && (IsNew || _notebook != null))
-    {
+    </MudPaper>
+}
+else if (IsNew)
+{
+    <MudPaper Class="pa-4">
         <MudStack Spacing="3">
-            @if (IsNew)
-            {
-                <NotebookNew @bind-Name="NewNotebookName"
-                             @bind-NotebookType="_newNotebookType"
-                             Databases="_databaseNodes"
-                             @bind-SelectedDatabase="_newNotebookDatabase"
-                             OnCreate="CreateNotebook" />
-            }
-            else
-            {
-                @if (_notebook.NotebookType == NotebookTypeInfo.Db && _selectedDatabase != null)
+            <NotebookNew @bind-Name="NewNotebookName"
+                         @bind-NotebookType="_newNotebookType"
+                         Databases="_databaseNodes"
+                         @bind-SelectedDatabase="_newNotebookDatabase"
+                         OnCreate="CreateNotebook" />
+        </MudStack>
+    </MudPaper>
+}
+else if (_notebook != null)
+{
+    var showToc = _notebook.WorkspaceId != null || WorkspaceId != null;
+    <div class="notebook-page-layout @(showToc ? "notebook-page-with-toc" : "")" style="@(showToc ? "display: flex; gap: 0; min-height: 0; flex: 1;" : "")">
+        @if (showToc)
+        {
+            <aside class="notebook-toc-sidebar" style="width: 220px; min-width: 180px; border-right: 1px solid var(--mud-palette-lines-default); overflow-y: auto; flex-shrink: 0;">
+                <NotebookToc Cells="@(_notebook.Cells?.ToList() ?? new List<NotebookCellInfo>())"
+                             OnCellSelect="ScrollToCell"
+                             OnAddCell="AddCell" />
+            </aside>
+        }
+        <div class="notebook-page-main flex-grow-1" style="display: flex; flex-direction: column; min-width: 0; overflow: auto;">
+            @* Top panel: Run all, Add new cell *@
+            <MudPaper Class="pa-2 mb-2" Elevation="0" Outlined="true">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap">
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.PlayArrow"
+                               OnClick="RunAllCells"
+                               Disabled="@(_runAllBusy || _notebook.Cells?.Count == 0)"
+                               Size="Size.Small">
+                        @(_runAllBusy ? "Running…" : "Run all cells")
+                    </MudButton>
+                    <MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
+                        <ActivatorContent>
+                            <MudButton Variant="Variant.Outlined"
+                                       Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Filled.Add"
+                                       Size="Size.Small">
+                                Add cell
+                            </MudButton>
+                        </ActivatorContent>
+                        <ChildContent>
+                            <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Sql))" Icon="@Icons.Material.Filled.Code">SQL</MudMenuItem>
+                            <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Markdown))" Icon="@Icons.Material.Filled.TextFields">Markdown</MudMenuItem>
+                            <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Chart))" Icon="@Icons.Material.Filled.BarChart">Chart</MudMenuItem>
+                            <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Mermaid))" Icon="@Icons.Material.Filled.AccountTree">Mermaid</MudMenuItem>
+                            <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Excalidraw))" Icon="@Icons.Material.Filled.Gesture">Diagram</MudMenuItem>
+                        </ChildContent>
+                    </MudMenu>
+                </MudStack>
+            </MudPaper>
+            <MudPaper Class="pa-4 flex-grow-1">
+                @if (_notebook.Cells == null || _notebook.Cells.Count == 0)
                 {
-                    <MudPaper Class="pa-3 mb-3" Elevation="0" Outlined="true">
-                        <MudStack Spacing="1">
-                            <MudText Typo="Typo.subtitle2">БД: @(_selectedDatabase.DatabaseName ?? _selectedDatabase.Name ?? "—")</MudText>
-                            @if (!string.IsNullOrWhiteSpace(_notebookDatabaseDescription))
-                            {
-                                <MudText Typo="Typo.body2" Color="Color.Secondary">@_notebookDatabaseDescription</MudText>
-                            }
-                        </MudStack>
-                    </MudPaper>
+                    <div class="notebook-empty-hint pa-4 text-center">
+                        <MudText Typo="Typo.body1" Color="Color.Secondary">Add the first cell or start typing a query in the editor below.</MudText>
+                    </div>
                 }
                 <NotebookEdit Notebook="_notebook!"
                               NotebookId="@Id"
@@ -67,20 +105,23 @@
                               ExecutionErrorChanged="OnExecutionErrorChanged"
                               OnChartTypeChanged="OnCellChartTypeChanged"
                               OnFormatCell="OnCellFormat"
+                              OnMermaidContentChanged="OnMermaidContentChanged"
                               OnExcalidrawContentChanged="OnExcalidrawContentChanged"
                               OnExcalidrawSaveRequested="OnExcalidrawSave"
+                              OnExcalidrawEditorContentChanged="OnExcalidrawEditorContentChanged"
                               OnDeleteCell="HandleDeleteCell"
                               OnCellUpdated="SaveNotebookAfterCellUpdate" />
-            }
-        </MudStack>
-    }
-
-    @if (!_loading && !IsNew && _notebook == null && _loadAttempted)
-    {
+            </MudPaper>
+        </div>
+    </div>
+}
+else if (_loadAttempted)
+{
+    <MudPaper Class="pa-4">
         <MudAlert Severity="Severity.Warning">Notebook not found.</MudAlert>
         <MudLink Href="@MainRoutes.Notebooks">Back to list</MudLink>
-    }
-</MudPaper>
+    </MudPaper>
+}
 
 @code {
     [Parameter] public Guid Id { get; set; }
@@ -96,6 +137,8 @@
     [Inject] private IAiAssistInsertService AiAssistInsertService { get; set; } = null!;
     [Inject] private ICatalogInsertService CatalogInsertService { get; set; } = null!;
     [Inject] private ICurrentDatabaseContext CurrentDatabaseContext { get; set; } = null!;
+    [Inject] private ISnackbar Snackbar { get; set; } = null!;
+    [Inject] private IRecentNotebooksService RecentNotebooksService { get; set; } = null!;
 
     private bool IsNew => Id == Guid.Empty;
     private bool _loading = true;
@@ -118,6 +161,7 @@
     private string? _notebookDatabaseDescription;
     private CancellationTokenSource? _saveDebounceCts;
     private const int NotebookSaveDebounceMs = 1000;
+    private bool _runAllBusy;
 
     protected override async Task OnInitializedAsync()
     {
@@ -187,6 +231,7 @@
                 _sqlEditorContent = t;
                 CurrentSqlContext.CurrentSql = t;
             });
+            _ = RecentNotebooksService.AddRecentAsync(Id, _notebook.Name ?? "Notebook");
         }
     }
 
@@ -267,6 +312,59 @@
     private void CancelRun()
     {
         _runCts?.Cancel();
+    }
+
+    private async Task ScrollToCell(NotebookCellInfo cell)
+    {
+        if (_notebook?.Cells == null) return;
+        var list = _notebook.Cells.ToList();
+        var index = list.IndexOf(cell);
+        if (index < 0) return;
+        try
+        {
+            await JS.InvokeVoidAsync("eval", $"document.getElementById('notebook-cell-{index}')?.scrollIntoView({{ behavior: 'smooth', block: 'start' }});");
+        }
+        catch { /* ignore */ }
+    }
+
+    private async Task RunAllCells()
+    {
+        if (_notebook?.Cells == null || _runAllBusy) return;
+        var executable = _notebook.Cells
+            .Where(c => c.Type == NotebookCellTypeInfo.Sql || c.Type == NotebookCellTypeInfo.Chart)
+            .Where(c => !string.IsNullOrWhiteSpace(c.Content))
+            .ToList();
+        if (executable.Count == 0)
+        {
+            return;
+        }
+        _runAllBusy = true;
+        _executionError = null;
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+            var timeout = _queryTimeoutSeconds ?? 30;
+            foreach (var cell in executable)
+            {
+                var result = await NotebookManager.ExecuteQuery(Id, cell.Content!.Trim(), CancellationToken.None, timeout, cell.CatalogNodeId ?? _selectedDatabase?.Id);
+                cell.ExecutionResult = result;
+                if (cell.Type == NotebookCellTypeInfo.Chart && !string.IsNullOrEmpty(cell.ExecutionResult?.ChartType))
+                    cell.ExecutionResult.ChartType = cell.ExecutionResult.ChartType;
+            }
+            _notebook = await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
+            SnackbarExtensions.ShowPopupMessage(Snackbar, $"Cells executed: {executable.Count}.", Severity.Success);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            _executionError = ex.Message;
+            SnackbarExtensions.ShowPopupMessage(Snackbar, ex.Message, Severity.Error);
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            _runAllBusy = false;
+        }
     }
 
     private async Task RunQuery()
@@ -457,7 +555,15 @@
             {
                 Id = 0,
                 Type = NotebookCellTypeInfo.Excalidraw,
-                Content = "{}",
+                Content = string.IsNullOrWhiteSpace(_excalidrawEditorContent) ? "{}" : _excalidrawEditorContent,
+                Title = "Excalidraw",
+                ExecutionResult = new NotebookCellExecutionResultInfo(),
+            },
+            NotebookCellTypeInfo.Mermaid => new NotebookCellInfo
+            {
+                Id = 0,
+                Type = NotebookCellTypeInfo.Mermaid,
+                Content = "graph TD\n  A --> B",
                 ExecutionResult = new NotebookCellExecutionResultInfo(),
             },
             _ => new NotebookCellInfo
@@ -557,6 +663,18 @@
             cell = _notebook.Cells.LastOrDefault(c => c.Id == 0);
         if (cell == null) return;
         cell.Content = arg.FormattedContent;
+        await ScheduleNotebookSaveDebounced();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnMermaidContentChanged((int CellId, string Content) arg)
+    {
+        if (_notebook?.Cells == null) return;
+        var cell = _notebook.Cells.FirstOrDefault(c => c.Id == arg.CellId);
+        if (cell == null && arg.CellId == 0)
+            cell = _notebook.Cells.LastOrDefault(c => c.Id == 0);
+        if (cell == null) return;
+        cell.Content = arg.Content;
         await ScheduleNotebookSaveDebounced();
         await InvokeAsync(StateHasChanged);
     }

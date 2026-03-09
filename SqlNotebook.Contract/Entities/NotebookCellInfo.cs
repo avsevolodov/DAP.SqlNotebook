@@ -25,6 +25,9 @@ namespace DAP.SqlNotebook.Contract.Entities
 
         public string? CreatedBy { get; set; }
 
+        /// <summary>Optional human-friendly title for TOC.</summary>
+        public string? Title { get; set; }
+
         /// <summary>Database (catalog node) used when this cell was executed.</summary>
         public Guid? CatalogNodeId { get; set; }
 

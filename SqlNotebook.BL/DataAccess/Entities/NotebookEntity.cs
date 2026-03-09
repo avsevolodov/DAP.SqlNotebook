@@ -40,6 +40,13 @@ namespace DAP.SqlNotebook.BL.DataAccess.Entities
         /// <summary>Тип ноутбука: 0 = Db, 1 = Generic.</summary>
         public int NotebookType { get; set; }
 
+        /// <summary>Status: 0 = Active, 1 = Archived, 2 = Trash.</summary>
+        public int Status { get; set; }
+
+        /// <summary>Tags as JSON array string, e.g. ["tag1","tag2"].</summary>
+        [MaxLength(2048)]
+        public string? TagsJson { get; set; }
+
         [ForeignKey(nameof(WorkspaceId))]
         public WorkspaceEntity? Workspace { get; set; }
 
