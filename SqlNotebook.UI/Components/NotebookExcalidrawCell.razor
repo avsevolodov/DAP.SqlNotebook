@@ -18,14 +18,11 @@
                            Size="Size.Small"
                            Title="@(_collapsed ? "Expand" : "Collapse")"
                            OnClick="ToggleCollapsed" />
-            <MudTextField T="string"
-                          @bind-Value="Cell.Title"
-                          Placeholder="Cell title (optional)"
-                          Variant="Variant.Outlined"
-                          Margin="Margin.Dense"
-                          Class="ml-2"
-                          Style="max-width: 260px;"
-                          Immediate="true" />
+            <MudText Typo="Typo.caption"
+                     Class="ml-2 notebook-cell-title"
+                     Style="max-width: 260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                @GetTitle()
+            </MudText>
             <MudIconButton Icon="@Icons.Material.Filled.Save"
                            Size="Size.Small"
                            Disabled="@(!_isDirty)"
@@ -53,6 +50,9 @@
             <div class="flex-grow-1"></div>
             @if (!_collapsed)
             {
+                <MudIconButton Icon="@Icons.Material.Filled.FileCopy" Size="Size.Small" Title="Copy cell" OnClick="CopyCell" />
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small" Disabled="@(!CanMoveUp)" Title="Move up" OnClick="MoveUp" />
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Size="Size.Small" Disabled="@(!CanMoveDown)" Title="Move down" OnClick="MoveDown" />
                 <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" Title="Delete cell" OnClick="DeleteCell" />
             }
         </div>
@@ -97,6 +97,11 @@
     [Parameter] public EventCallback<NotebookCellInfo> OnDeleteCell { get; set; }
     [Parameter] public EventCallback<(int CellId, string Content)> OnExcalidrawContentChanged { get; set; }
     [Parameter] public EventCallback<int> OnSaveRequested { get; set; }
+    [Parameter] public EventCallback OnCopyCell { get; set; }
+    [Parameter] public EventCallback OnMoveUp { get; set; }
+    [Parameter] public EventCallback OnMoveDown { get; set; }
+    [Parameter] public bool CanMoveUp { get; set; }
+    [Parameter] public bool CanMoveDown { get; set; }
 
     [Inject] private IJSRuntime JS { get; set; } = null!;
 
@@ -110,12 +115,48 @@
     private bool _showDiscardDialog;
     private bool _pendingFullscreenExit;
 
+    private string GetTitle()
+    {
+        if (!string.IsNullOrWhiteSpace(Cell.Title))
+        {
+            var trimmed = Cell.Title.Trim();
+            return trimmed.Length > 40 ? trimmed[..37] + "…" : trimmed;
+        }
+        if (!string.IsNullOrWhiteSpace(Cell.Content))
+        {
+            var firstLine = Cell.Content.TrimStart().Split('\n').FirstOrDefault()?.Trim() ?? "";
+            if (firstLine.Length > 40)
+                firstLine = firstLine[..37] + "…";
+            if (!string.IsNullOrEmpty(firstLine))
+                return firstLine;
+        }
+        return "Diagram";
+    }
+
     protected override void OnInitialized()
     {
         _dotNetRef = DotNetObjectReference.Create(this);
     }
 
     private void ToggleCollapsed() => _collapsed = !_collapsed;
+
+    private async Task CopyCell()
+    {
+        if (OnCopyCell.HasDelegate)
+            await OnCopyCell.InvokeAsync();
+    }
+
+    private async Task MoveUp()
+    {
+        if (OnMoveUp.HasDelegate)
+            await OnMoveUp.InvokeAsync();
+    }
+
+    private async Task MoveDown()
+    {
+        if (OnMoveDown.HasDelegate)
+            await OnMoveDown.InvokeAsync();
+    }
 
     private async Task HandleIframeLoad()
     {

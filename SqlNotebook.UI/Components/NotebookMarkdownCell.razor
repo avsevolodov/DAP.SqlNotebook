@@ -26,6 +26,20 @@
                                    Size="Size.Small"
                                    Title="Copy"
                                    OnClick="CopyContent" />
+                    <MudIconButton Icon="@Icons.Material.Filled.FileCopy"
+                                   Size="Size.Small"
+                                   Title="Copy cell"
+                                   OnClick="CopyCell" />
+                    <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward"
+                                   Size="Size.Small"
+                                   Disabled="@(!CanMoveUp)"
+                                   Title="Move up"
+                                   OnClick="MoveUp" />
+                    <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward"
+                                   Size="Size.Small"
+                                   Disabled="@(!CanMoveDown)"
+                                   Title="Move down"
+                                   OnClick="MoveDown" />
                     <MudIconButton Icon="@Icons.Material.Filled.Delete"
                                    Size="Size.Small"
                                    Color="Color.Error"
@@ -46,12 +60,35 @@
 @code {
     [Parameter, EditorRequired] public NotebookCellInfo Cell { get; set; } = null!;
     [Parameter] public EventCallback<NotebookCellInfo> OnDeleteCell { get; set; }
+    [Parameter] public EventCallback OnCopyCell { get; set; }
+    [Parameter] public EventCallback OnMoveUp { get; set; }
+    [Parameter] public EventCallback OnMoveDown { get; set; }
+    [Parameter] public bool CanMoveUp { get; set; }
+    [Parameter] public bool CanMoveDown { get; set; }
 
     [Inject] private IJSRuntime JS { get; set; } = null!;
 
     private bool _collapsed;
 
     private void ToggleCollapsed() => _collapsed = !_collapsed;
+
+    private async Task CopyCell()
+    {
+        if (OnCopyCell.HasDelegate)
+            await OnCopyCell.InvokeAsync();
+    }
+
+    private async Task MoveUp()
+    {
+        if (OnMoveUp.HasDelegate)
+            await OnMoveUp.InvokeAsync();
+    }
+
+    private async Task MoveDown()
+    {
+        if (OnMoveDown.HasDelegate)
+            await OnMoveDown.InvokeAsync();
+    }
 
     private string GetTitle()
     {

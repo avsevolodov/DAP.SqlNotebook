@@ -26,7 +26,12 @@
                             @if (cell.Type == NotebookCellTypeInfo.Markdown)
                             {
                                 <NotebookMarkdownCell Cell="cell"
-                                                      OnDeleteCell="OnDeleteCell" />
+                                                      OnDeleteCell="OnDeleteCell"
+                                                      OnCopyCell="@(() => CopyCell(cellIndex))"
+                                                      OnMoveUp="@(() => MoveCellUp(cellIndex))"
+                                                      OnMoveDown="@(() => MoveCellDown(cellIndex))"
+                                                      CanMoveUp="@(cellIndex > 0)"
+                                                      CanMoveDown="@(cellIndex < _cellsList.Count - 1)" />
                             }
                             else if (cell.Type == NotebookCellTypeInfo.Sql || cell.Type == NotebookCellTypeInfo.Chart)
                             {
@@ -38,38 +43,37 @@
                                                   OnFormatCell="OnFormatCell"
                                                   OnDeleteCell="OnDeleteCell"
                                                   OnInsertIntoEditor="OnInsertIntoEditor"
-                                                  OnCellUpdated="OnCellUpdated" />
+                                                  OnCellUpdated="OnCellUpdated"
+                                                  OnCopyCell="@(() => CopyCell(cellIndex))"
+                                                  OnMoveUp="@(() => MoveCellUp(cellIndex))"
+                                                  OnMoveDown="@(() => MoveCellDown(cellIndex))"
+                                                  CanMoveUp="@(cellIndex > 0)"
+                                                  CanMoveDown="@(cellIndex < _cellsList.Count - 1)" />
                             }
                             else if (cell.Type == NotebookCellTypeInfo.Excalidraw)
                             {
                                 <NotebookExcalidrawCell Cell="cell"
                                                         OnDeleteCell="OnDeleteCell"
                                                         OnExcalidrawContentChanged="OnExcalidrawContentChanged"
-                                                        OnSaveRequested="OnExcalidrawSaveRequested" />
+                                                        OnSaveRequested="OnExcalidrawSaveRequested"
+                                                        OnCopyCell="@(() => CopyCell(cellIndex))"
+                                                        OnMoveUp="@(() => MoveCellUp(cellIndex))"
+                                                        OnMoveDown="@(() => MoveCellDown(cellIndex))"
+                                                        CanMoveUp="@(cellIndex > 0)"
+                                                        CanMoveDown="@(cellIndex < _cellsList.Count - 1)" />
                             }
                             else if (cell.Type == NotebookCellTypeInfo.Mermaid)
                             {
                                 <NotebookMermaidCell Cell="cell"
                                                      OnDeleteCell="OnDeleteCell"
-                                                     OnContentChanged="OnMermaidContentChanged" />
+                                                     OnContentChanged="OnMermaidContentChanged"
+                                                     OnCopyCell="@(() => CopyCell(cellIndex))"
+                                                     OnMoveUp="@(() => MoveCellUp(cellIndex))"
+                                                     OnMoveDown="@(() => MoveCellDown(cellIndex))"
+                                                     CanMoveUp="@(cellIndex > 0)"
+                                                     CanMoveDown="@(cellIndex < _cellsList.Count - 1)" />
                             }
                         </div>
-                        <MudStack Spacing="1" AlignItems="AlignItems.Center" Class="notebook-cell-move-controls">
-                            <MudIconButton Icon="@Icons.Material.Filled.FileCopy"
-                                           Size="Size.Small"
-                                           Title="Copy cell"
-                                           OnClick="@(() => CopyCell(cellIndex))" />
-                            <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward"
-                                           Size="Size.Small"
-                                           Disabled="@(cellIndex == 0)"
-                                           Title="Move up"
-                                           OnClick="@(() => MoveCellUp(cellIndex))" />
-                            <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward"
-                                           Size="Size.Small"
-                                           Disabled="@(cellIndex == _cellsList.Count - 1)"
-                                           Title="Move down"
-                                           OnClick="@(() => MoveCellDown(cellIndex))" />
-                        </MudStack>
                     </div>
                 </div>
             }
