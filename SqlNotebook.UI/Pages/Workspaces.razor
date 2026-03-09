@@ -118,7 +118,7 @@
             <MudStack Row="true" Spacing="1" Class="mt-1" Wrap="Wrap.Wrap">
                 @foreach (var option in _iconOptions)
                 {
-                    <MudChip Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => _editIcon = option.Value)" Style="cursor: pointer;">
+                    <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => _editIcon = option.Value)" Style="cursor: pointer;">
                         <MudIcon Icon="@option.Value" Size="Size.Small" Class="mr-1" />
                         @option.Label
                     </MudChip>

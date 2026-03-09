@@ -257,7 +257,8 @@
         if (Notebook?.Cells == null || index < 0 || index >= Notebook.Cells.Count)
             return;
 
-        var original = Notebook.Cells[index];
+        var list = Notebook.Cells.ToList();
+        var original = list[index];
 
         var copy = new NotebookCellInfo
         {
@@ -271,7 +272,6 @@
             DatabaseDisplayName = original.DatabaseDisplayName
         };
 
-        var list = Notebook.Cells.ToList();
         list.Insert(index + 1, copy);
         Notebook.Cells = list;
 
