@@ -36,83 +36,72 @@ else if (IsNew)
 }
 else if (_notebook != null)
 {
-    var showToc = _notebook.WorkspaceId != null || WorkspaceId != null;
-    <div class="notebook-page-layout @(showToc ? "notebook-page-with-toc" : "")" style="@(showToc ? "display: flex; gap: 0; min-height: 0; flex: 1;" : "")">
-        @if (showToc)
-        {
-            <aside class="notebook-toc-sidebar" style="width: 220px; min-width: 180px; border-right: 1px solid var(--mud-palette-lines-default); overflow-y: auto; flex-shrink: 0;">
-                <NotebookToc Cells="@(_notebook.Cells?.ToList() ?? new List<NotebookCellInfo>())"
-                             OnCellSelect="ScrollToCell"
-                             OnAddCell="AddCell" />
-            </aside>
-        }
-        <div class="notebook-page-main flex-grow-1" style="display: flex; flex-direction: column; min-width: 0; overflow: auto;">
-            @* Top panel: Run all, Add new cell *@
-            <MudPaper Class="pa-2 mb-2" Elevation="0" Outlined="true">
-                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap">
-                    <MudButton Variant="Variant.Filled"
-                               Color="Color.Primary"
-                               StartIcon="@Icons.Material.Filled.PlayArrow"
-                               OnClick="RunAllCells"
-                               Disabled="@(_runAllBusy || _notebook.Cells?.Count == 0)"
-                               Size="Size.Small">
-                        @(_runAllBusy ? "Running…" : "Run all cells")
-                    </MudButton>
-                    <MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
-                        <ActivatorContent>
-                            <MudButton Variant="Variant.Outlined"
-                                       Color="Color.Primary"
-                                       StartIcon="@Icons.Material.Filled.Add"
-                                       Size="Size.Small">
-                                Add cell
-                            </MudButton>
-                        </ActivatorContent>
-                        <ChildContent>
-                            <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Sql))" Icon="@Icons.Material.Filled.Code">SQL</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Markdown))" Icon="@Icons.Material.Filled.TextFields">Markdown</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Chart))" Icon="@Icons.Material.Filled.BarChart">Chart</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Mermaid))" Icon="@Icons.Material.Filled.AccountTree">Mermaid</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Excalidraw))" Icon="@Icons.Material.Filled.Gesture">Diagram</MudMenuItem>
-                        </ChildContent>
-                    </MudMenu>
-                </MudStack>
-            </MudPaper>
-            <MudPaper Class="pa-4 flex-grow-1">
-                @if (_notebook.Cells == null || _notebook.Cells.Count == 0)
-                {
-                    <div class="notebook-empty-hint pa-4 text-center">
-                        <MudText Typo="Typo.body1" Color="Color.Secondary">Add the first cell or start typing a query in the editor below.</MudText>
-                    </div>
-                }
-                <NotebookEdit Notebook="_notebook!"
-                              NotebookId="@Id"
-                              SelectedDatabase="_selectedDatabase"
-                              SqlEditorContent="@_sqlEditorContent"
-                              SqlEditorContentChanged="OnEditorContentChanged"
-                              CurrentRunResult="_currentRunResult"
-                              QueryTimeoutSeconds="_queryTimeoutSeconds"
-                              OnQueryTimeoutChanged="OnQueryTimeoutChanged"
-                              SelectTopCount="_selectTopCount"
-                              OnSelectTopCountChanged="OnSelectTopCountChanged"
-                              IsQueryRunning="_queryRunning"
-                              OnCancelRun="CancelRun"
-                              OnRun="RunQuery"
-                              OnRunSqlFromMarkdown="RunQueryFromSql"
-                              OnRunAsChart="RunQueryAsChart"
-                              OnAddCell="AddCell"
-                              OnInsertIntoEditor="InsertIntoEditor"
-                              ExecutionError="@_executionError"
-                              ExecutionErrorChanged="OnExecutionErrorChanged"
-                              OnChartTypeChanged="OnCellChartTypeChanged"
-                              OnFormatCell="OnCellFormat"
-                              OnMermaidContentChanged="OnMermaidContentChanged"
-                              OnExcalidrawContentChanged="OnExcalidrawContentChanged"
-                              OnExcalidrawSaveRequested="OnExcalidrawSave"
-                              OnExcalidrawEditorContentChanged="OnExcalidrawEditorContentChanged"
-                              OnDeleteCell="HandleDeleteCell"
-                              OnCellUpdated="SaveNotebookAfterCellUpdate" />
-            </MudPaper>
-        </div>
+    <div class="notebook-page-main flex-grow-1" style="display: flex; flex-direction: column; min-width: 0; overflow: auto;">
+        @* Top panel: Run all, Add new cell *@
+        <MudPaper Class="pa-2 mb-2" Elevation="0" Outlined="true">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.PlayArrow"
+                           OnClick="RunAllCells"
+                           Disabled="@(_runAllBusy || _notebook.Cells?.Count == 0)"
+                           Size="Size.Small">
+                    @(_runAllBusy ? "Running…" : "Run all cells")
+                </MudButton>
+                <MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Add"
+                                   Size="Size.Small">
+                            Add cell
+                        </MudButton>
+                    </ActivatorContent>
+                    <ChildContent>
+                        <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Sql))" Icon="@Icons.Material.Filled.Code">SQL</MudMenuItem>
+                        <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Markdown))" Icon="@Icons.Material.Filled.TextFields">Markdown</MudMenuItem>
+                        <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Chart))" Icon="@Icons.Material.Filled.BarChart">Chart</MudMenuItem>
+                        <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Mermaid))" Icon="@Icons.Material.Filled.AccountTree">Mermaid</MudMenuItem>
+                        <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Excalidraw))" Icon="@Icons.Material.Filled.Gesture">Diagram</MudMenuItem>
+                    </ChildContent>
+                </MudMenu>
+            </MudStack>
+        </MudPaper>
+        <MudPaper Class="pa-4 flex-grow-1">
+            @if (_notebook.Cells == null || _notebook.Cells.Count == 0)
+            {
+                <div class="notebook-empty-hint pa-4 text-center">
+                    <MudText Typo="Typo.body1" Color="Color.Secondary">Add the first cell or start typing a query in the editor below.</MudText>
+                </div>
+            }
+            <NotebookEdit Notebook="_notebook!"
+                          NotebookId="@Id"
+                          SelectedDatabase="_selectedDatabase"
+                          SqlEditorContent="@_sqlEditorContent"
+                          SqlEditorContentChanged="OnEditorContentChanged"
+                          CurrentRunResult="_currentRunResult"
+                          QueryTimeoutSeconds="_queryTimeoutSeconds"
+                          OnQueryTimeoutChanged="OnQueryTimeoutChanged"
+                          SelectTopCount="_selectTopCount"
+                          OnSelectTopCountChanged="OnSelectTopCountChanged"
+                          IsQueryRunning="_queryRunning"
+                          OnCancelRun="CancelRun"
+                          OnRun="RunQuery"
+                          OnRunSqlFromMarkdown="RunQueryFromSql"
+                          OnRunAsChart="RunQueryAsChart"
+                          OnAddCell="AddCell"
+                          OnInsertIntoEditor="InsertIntoEditor"
+                          ExecutionError="@_executionError"
+                          ExecutionErrorChanged="OnExecutionErrorChanged"
+                          OnChartTypeChanged="OnCellChartTypeChanged"
+                          OnFormatCell="OnCellFormat"
+                          OnMermaidContentChanged="OnMermaidContentChanged"
+                          OnExcalidrawContentChanged="OnExcalidrawContentChanged"
+                          OnExcalidrawSaveRequested="OnExcalidrawSave"
+                          OnExcalidrawEditorContentChanged="OnExcalidrawEditorContentChanged"
+                          OnDeleteCell="HandleDeleteCell"
+                          OnCellUpdated="SaveNotebookAfterCellUpdate" />
+        </MudPaper>
     </div>
 }
 else if (_loadAttempted)
