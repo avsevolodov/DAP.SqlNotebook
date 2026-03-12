@@ -11,5 +11,5 @@ namespace DAP.SqlNotebook.Service.Services;
 /// </summary>
 public interface INodeQueryExecutorService
 {
-    Task<NotebookCellExecutionResultInfo> ExecuteAsync(Guid catalogNodeId, string query, int timeoutSeconds, CancellationToken ct = default);
+    Task<NotebookCellExecutionResultInfo> ExecuteAsync(Guid catalogNodeId, string query, int timeoutSeconds, int? maxRows = null, CancellationToken ct = default);
 }

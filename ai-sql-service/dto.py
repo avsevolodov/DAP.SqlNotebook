@@ -27,6 +27,7 @@ class GenerateSqlResponse(BaseModel):
 class AutocompleteSqlRequest(BaseModel):
     sql: str
     entities: Optional[list[str]] = None
+    cursor_position: Optional[int] = None
 
 
 class AutocompleteSuggestionItem(BaseModel):

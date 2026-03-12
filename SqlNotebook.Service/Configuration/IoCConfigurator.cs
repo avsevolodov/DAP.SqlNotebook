@@ -49,6 +49,12 @@ internal static class IoCConfigurator
         services.AddScoped<INodeQueryExecutorService, NodeQueryExecutorService>();
         services.AddScoped<IAiSqlBackend, AiSqlHttpBackend>();
         services.AddScoped<IAiSqlService, DAP.SqlNotebook.BL.Services.AiSql.AiSqlService>();
+        // SchemaGraphFactory depends on scoped ICatalogRepository, so it must not be singleton.
+        // Use scoped lifetime; internal caching still keeps schema in memory per scope.
+        services.AddScoped<DAP.SqlNotebook.BL.Services.AiSql.Autocomplete.ISchemaGraphFactory,
+            DAP.SqlNotebook.BL.Services.AiSql.Autocomplete.SchemaGraphFactory>();
+        services.AddScoped<DAP.SqlNotebook.BL.Services.AiSql.Autocomplete.IAutocompleteCandidateService,
+            DAP.SqlNotebook.BL.Services.AiSql.Autocomplete.AutocompleteCandidateService>();
         services.AddScoped<INotebookManager, NotebookManager>();
         services.AddScoped<INotebookAccessManager, NotebookAccessManager>();
         

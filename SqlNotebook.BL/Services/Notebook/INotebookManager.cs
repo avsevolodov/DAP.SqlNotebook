@@ -29,5 +29,5 @@ public interface INotebookManager
 
     Task DeleteAsync(Guid id, CancellationToken ct);
 
-    Task<NotebookCellExecutionResultInfo> ExecuteQueryAsync(string query, int timeoutSeconds, CancellationToken ct);
+    Task<NotebookCellExecutionResultInfo> ExecuteQueryAsync(string query, int timeoutSeconds, int? maxRows = null, CancellationToken ct = default);
 }

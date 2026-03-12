@@ -78,17 +78,24 @@
                                        Size="Size.Small"
                                        Color="@(IsChartTypeSelected("line") ? Color.Primary : Color.Default)"
                                        Title="Chart type: Line"
+                                       Disabled="@(!_canShowLineChart)"
                                        OnClick="SetChartTypeLine" />
                         <MudIconButton Icon="@Icons.Material.Filled.BarChart"
                                        Size="Size.Small"
                                        Color="@(IsChartTypeSelected("bar") ? Color.Primary : Color.Default)"
                                        Title="Chart type: Bar"
+                                       Disabled="@(!_canShowBarChart)"
                                        OnClick="SetChartTypeBar" />
                         <MudIconButton Icon="@Icons.Material.Filled.PieChart"
                                        Size="Size.Small"
                                        Color="@(IsChartTypeSelected("pie") ? Color.Primary : Color.Default)"
                                        Title="Chart type: Pie"
+                                       Disabled="@(!_canShowPieChart)"
                                        OnClick="SetChartTypePie" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Download"
+                                       Size="Size.Small"
+                                       Title="Download CSV (full result)"
+                                       OnClick="DownloadCellResultCsv" />
                     }
 
                     <MudIconButton Icon="@Icons.Material.Filled.FileCopy"
@@ -148,6 +155,7 @@
     [Parameter, EditorRequired] public NotebookCellInfo Cell { get; set; } = null!;
     [Parameter, EditorRequired] public Guid NotebookId { get; set; }
     [Parameter] public int? QueryTimeoutSeconds { get; set; }
+    [Parameter] public int SelectTopCount { get; set; } = 10;
     [Parameter] public CatalogNodeInfo? SelectedDatabase { get; set; }
     [Parameter] public EventCallback<(int CellId, string ChartType)> OnChartTypeChanged { get; set; }
     [Parameter] public EventCallback<(int CellId, string FormattedContent)> OnFormatCell { get; set; }
@@ -180,6 +188,9 @@
     private bool _showLineNumbers;
     private bool _editingTitle;
     private string? _titleEdit;
+    private bool _canShowLineChart;
+    private bool _canShowBarChart;
+    private bool _canShowPieChart;
 
     private string GetTitle()
     {
@@ -199,7 +210,6 @@
         return Cell.Type switch
         {
             NotebookCellTypeInfo.Sql => "SQL",
-            NotebookCellTypeInfo.Chart => "SQL",
             _ => "Cell"
         };
     }
@@ -275,6 +285,49 @@
         return cellChanged;
     }
 
+    private void UpdateChartCapabilities()
+    {
+        _canShowLineChart = _canShowBarChart = _canShowPieChart = false;
+        var result = Cell.ExecutionResult;
+        if (result?.Columns == null || result.Columns.Length == 0 || result.Rows == null || result.Rows.Length == 0)
+            return;
+
+        var colCount = result.Columns.Length;
+        var rows = result.Rows;
+        var bestNumericCount = 0;
+
+        for (var c = 0; c < colCount; c++)
+        {
+            var numericCount = 0;
+            foreach (var row in rows)
+            {
+                var values = row.Values?.ToList() ?? new List<string>();
+                var cell = c < values.Count ? values[c] ?? string.Empty : string.Empty;
+                if (TryParseDouble(cell, out _))
+                    numericCount++;
+            }
+
+            if (numericCount > 0)
+            {
+                _canShowLineChart = true;
+                _canShowBarChart = true;
+                if (numericCount > bestNumericCount)
+                    bestNumericCount = numericCount;
+            }
+        }
+
+        _canShowPieChart = bestNumericCount > 0;
+    }
+
+    private static bool TryParseDouble(string? text, out double value)
+    {
+        return double.TryParse(
+            text?.Trim(),
+            System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowThousands,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out value);
+    }
+
     private async Task RunCell()
     {
         if (string.IsNullOrWhiteSpace(Cell.Content) || _running) return;
@@ -286,7 +339,8 @@
         {
             StateHasChanged();
             var timeout = QueryTimeoutSeconds ?? 30;
-            var result = await NotebookManager.ExecuteQuery(NotebookId, Cell.Content.Trim(), _runCts.Token, timeout, Cell.CatalogNodeId ?? SelectedDatabase?.Id);
+            var top = Math.Clamp(SelectTopCount, 1, 10000);
+            var result = await NotebookManager.ExecuteQuery(NotebookId, Cell.Content.Trim(), _runCts.Token, timeout, Cell.CatalogNodeId ?? SelectedDatabase?.Id, top);
             if (result.Status == NotebookCellExecutionStatusInfo.Failed)
             {
                 _cellError = result.Error ?? "Execution failed.";
@@ -300,6 +354,7 @@
                 Cell.CatalogNodeId = SelectedDatabase.Id;
                 Cell.DatabaseDisplayName = SelectedDatabase.DatabaseName ?? SelectedDatabase.Name;
             }
+            UpdateChartCapabilities();
             if (OnCellUpdated.HasDelegate)
                 await OnCellUpdated.InvokeAsync();
         }
@@ -338,7 +393,7 @@
 
     private async Task FormatCell()
     {
-        if (Cell.Type != NotebookCellTypeInfo.Sql && Cell.Type != NotebookCellTypeInfo.Chart) return;
+        if (Cell.Type != NotebookCellTypeInfo.Sql) return;
         var formatted = SqlFormatterHelper.Format(Cell.Content);
         if (formatted == Cell.Content) return;
         if (OnFormatCell.HasDelegate)
@@ -411,6 +466,14 @@
         private Task SetChartTypeLine() => SetChartTypeInternal("line");
         private Task SetChartTypeBar() => SetChartTypeInternal("bar");
         private Task SetChartTypePie() => SetChartTypeInternal("pie");
+
+        private async Task DownloadCellResultCsv()
+        {
+            if (string.IsNullOrWhiteSpace(Cell.Content)) return;
+            var path = $"/api/v1/notebooks/{NotebookId}/execute/export-csv";
+            var body = new { Query = Cell.Content.Trim(), CommandTimeoutSeconds = QueryTimeoutSeconds ?? 30, CatalogNodeId = Cell.CatalogNodeId ?? SelectedDatabase?.Id };
+            await JS.InvokeVoidAsync("sqlNotebookDownloadCsv", path, body);
+        }
 
         private async Task SetChartTypeInternal(string chartType)
         {

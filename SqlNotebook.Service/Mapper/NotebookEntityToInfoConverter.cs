@@ -21,7 +21,7 @@ public sealed class NotebookEntityToInfoConverter : ITypeConverter<NotebookEntit
             .Select(c => new NotebookCellInfo
             {
                 Id = c.Id,
-                Type = (NotebookCellTypeInfo)c.CellType,
+                Type = (int)c.CellType == 2 ? NotebookCellTypeInfo.Sql : (NotebookCellTypeInfo)c.CellType,
                 Content = c.Content ?? string.Empty,
                 ExecutionResult = ParseExecutionResult(c.ExecutionResultJson),
                 CreatedBy = c.CreatedBy,

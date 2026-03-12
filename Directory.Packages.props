@@ -4,6 +4,10 @@
   </PropertyGroup>
   <ItemGroup>
 
+    <PackageVersion Include="xunit" Version="2.9.0" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.1"/>
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
+
 	  <!--3rd party-->
     <PackageVersion Include="Blazor.Extensions.Logging" Version="2.0.4"/>
     <PackageVersion Include="ClickHouse.Client" Version="7.13.2" />

@@ -24,6 +24,6 @@ public interface IDbProviderStrategy
     /// <summary>Read tables and columns from the database.</summary>
     Task<(List<TableMeta> Tables, List<ColumnMeta> Columns)> ReadMetadataAsync(string connectionString, CancellationToken ct = default);
 
-    /// <summary>Execute a query and return result set (column names + rows). For SELECT only; throws on error.</summary>
-    Task<QueryResult> ExecuteQueryAsync(string connectionString, string query, int timeoutSeconds, CancellationToken ct = default);
+    /// <summary>Execute a query and return result set (column names + rows). For SELECT only; throws on error. Stops after maxRows when specified.</summary>
+    Task<QueryResult> ExecuteQueryAsync(string connectionString, string query, int timeoutSeconds, int? maxRows = null, CancellationToken ct = default);
 }

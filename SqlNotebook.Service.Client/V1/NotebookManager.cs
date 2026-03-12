@@ -57,15 +57,25 @@ public class NotebookManager(HttpClient httpClient) : INotebookManager
         await responseMessage.ManagementServiceEnsureSuccessStatusCode();
     }
 
-    public async Task<NotebookCellExecutionResultInfo> ExecuteQuery(Guid notebookId, string query, CancellationToken ct, int? commandTimeoutSeconds = null, Guid? catalogNodeId = null)
+    public async Task<NotebookCellExecutionResultInfo> ExecuteQuery(Guid notebookId, string query, CancellationToken ct, int? commandTimeoutSeconds = null, Guid? catalogNodeId = null, int? maxRows = null)
     {
         var route = EndpointsHelper.GetNotebookExecuteRoute(notebookId);
-        var payload = new ConnectionExecutionRequest { Query = query, CommandTimeoutSeconds = commandTimeoutSeconds, CatalogNodeId = catalogNodeId };
+        var payload = new ConnectionExecutionRequest { Query = query, CommandTimeoutSeconds = commandTimeoutSeconds, CatalogNodeId = catalogNodeId, MaxRows = maxRows };
 
         using var responseMessage = await httpClient.PostAsJsonAsync(route, payload, ct);
         await responseMessage.ManagementServiceEnsureSuccessStatusCode();
         var response = await responseMessage.CdpReadContentAsAsync<NotebookCellExecutionResultInfo>(ct);
         return response;
+    }
+
+    public async Task<Stream> ExecuteQueryExportCsvAsync(Guid notebookId, string query, CancellationToken ct, int? commandTimeoutSeconds = null, Guid? catalogNodeId = null)
+    {
+        var route = EndpointsHelper.GetNotebookExecuteExportCsvRoute(notebookId);
+        var payload = new ConnectionExecutionRequest { Query = query, CommandTimeoutSeconds = commandTimeoutSeconds, CatalogNodeId = catalogNodeId, MaxRows = 1_000_000 };
+
+        var responseMessage = await httpClient.PostAsJsonAsync(route, payload, ct);
+        await responseMessage.ManagementServiceEnsureSuccessStatusCode();
+        return await responseMessage.Content.ReadAsStreamAsync(ct);
     }
 
     public async Task<NotebookAccessResponse> GetNotebookAccess(Guid notebookId, CancellationToken ct)

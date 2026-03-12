@@ -37,7 +37,7 @@ else if (IsNew)
 else if (_notebook != null)
 {
     <div class="notebook-page-main flex-grow-1" style="display: flex; flex-direction: column; min-width: 0; overflow: auto;">
-        @* Top panel: Run all, Add new cell *@
+        @* Top panel: Run all, Add new cell, Access *@
         <MudPaper Class="pa-2 mb-2" Elevation="0" Outlined="true">
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap">
                 <MudButton Variant="Variant.Filled"
@@ -64,6 +64,13 @@ else if (_notebook != null)
                         <MudMenuItem OnClick="@(() => AddCell(NotebookCellTypeInfo.Excalidraw))" Icon="@Icons.Material.Filled.Gesture">Excalidraw</MudMenuItem>
                     </ChildContent>
                 </MudMenu>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
+                           StartIcon="@Icons.Material.Filled.ManageAccounts"
+                           Size="Size.Small"
+                           OnClick="OpenAccessDialog">
+                    Access
+                </MudButton>
             </MudStack>
         </MudPaper>
         <MudPaper Class="pa-4 flex-grow-1">
@@ -128,6 +135,7 @@ else if (_loadAttempted)
     [Inject] private ICatalogInsertService CatalogInsertService { get; set; } = null!;
     [Inject] private ICurrentDatabaseContext CurrentDatabaseContext { get; set; } = null!;
     [Inject] private ISnackbar Snackbar { get; set; } = null!;
+    [Inject] private IDialogService DialogService { get; set; } = null!;
     [Inject] private IRecentNotebooksService RecentNotebooksService { get; set; } = null!;
     [Inject] private DAP.SqlNotebook.UI.INotebookRunContext NotebookRunContext { get; set; } = null!;
 
@@ -341,7 +349,7 @@ else if (_loadAttempted)
         if (_notebook?.Cells == null || _runAllBusy) return;
         var allCells = _notebook.Cells.ToList();
         var executable = allCells
-            .Where(c => c.Type == NotebookCellTypeInfo.Sql || c.Type == NotebookCellTypeInfo.Chart)
+            .Where(c => c.Type == NotebookCellTypeInfo.Sql)
             .Where(c => !string.IsNullOrWhiteSpace(c.Content))
             .ToList();
         if (executable.Count == 0)
@@ -366,10 +374,9 @@ else if (_loadAttempted)
                 NotebookRunContext.ActiveCellIndex = _runAllCurrentCellIndex;
                 await ScrollToCell(cell);
                 await InvokeAsync(StateHasChanged);
-                var result = await NotebookManager.ExecuteQuery(Id, cell.Content!.Trim(), CancellationToken.None, timeout, cell.CatalogNodeId ?? _selectedDatabase?.Id);
+                var top = Math.Clamp(_selectTopCount, 1, 10000);
+                var result = await NotebookManager.ExecuteQuery(Id, cell.Content!.Trim(), CancellationToken.None, timeout, cell.CatalogNodeId ?? _selectedDatabase?.Id, top);
                 cell.ExecutionResult = result;
-                if (cell.Type == NotebookCellTypeInfo.Chart && !string.IsNullOrEmpty(cell.ExecutionResult?.ChartType))
-                    cell.ExecutionResult.ChartType = cell.ExecutionResult.ChartType;
             }
             _notebook = await NotebookManager.UpdateNotebook(Id, _notebook, CancellationToken.None);
             SnackbarExtensions.ShowPopupMessage(Snackbar, $"Cells executed: {executable.Count}.", Severity.Success);
@@ -406,7 +413,8 @@ else if (_loadAttempted)
             await InvokeAsync(StateHasChanged);
             var timeout = _queryTimeoutSeconds ?? 30;
             var sql = (_sqlEditorContent ?? "").Trim();
-            var result = await NotebookManager.ExecuteQuery(Id, sql, _runCts.Token, timeout, _selectedDatabase?.Id);
+            var top = Math.Clamp(_selectTopCount, 1, 10000);
+            var result = await NotebookManager.ExecuteQuery(Id, sql, _runCts.Token, timeout, _selectedDatabase?.Id, top);
             if (result.Status == NotebookCellExecutionStatusInfo.Failed)
             {
                 _executionError = result.Error ?? "Execution failed.";
@@ -447,7 +455,8 @@ else if (_loadAttempted)
             await InvokeAsync(StateHasChanged);
             var timeout = _queryTimeoutSeconds ?? 30;
             var sqlTrimmed = (sql ?? "").Trim();
-            var result = await NotebookManager.ExecuteQuery(Id, sqlTrimmed, _runCts.Token, timeout, _selectedDatabase?.Id);
+            var top = Math.Clamp(_selectTopCount, 1, 10000);
+            var result = await NotebookManager.ExecuteQuery(Id, sqlTrimmed, _runCts.Token, timeout, _selectedDatabase?.Id, top);
             if (result.Status == NotebookCellExecutionStatusInfo.Failed)
             {
                 _executionError = result.Error ?? "Execution failed.";
@@ -500,7 +509,8 @@ else if (_loadAttempted)
         {
             await InvokeAsync(StateHasChanged);
             var timeout = _queryTimeoutSeconds ?? 30;
-            var result = await NotebookManager.ExecuteQuery(Id, _sqlEditorContent!.Trim(), _runCts.Token, timeout, _selectedDatabase?.Id);
+            var top = Math.Clamp(_selectTopCount, 1, 10000);
+            var result = await NotebookManager.ExecuteQuery(Id, _sqlEditorContent!.Trim(), _runCts.Token, timeout, _selectedDatabase?.Id, top);
             if (result.Status == NotebookCellExecutionStatusInfo.Failed)
             {
                 _executionError = result.Error ?? "Execution failed.";
@@ -734,7 +744,7 @@ else if (_loadAttempted)
     private async Task SaveNotebookAfterCellUpdate()
     {
         if (_notebook == null) return;
-        await ScheduleNotebookSaveDebounced();
+        _ = ScheduleNotebookSaveDebounced();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -774,5 +784,37 @@ else if (_loadAttempted)
     {
         var top = Math.Clamp(_selectTopCount, 1, 10000);
         return await Catalog.GetEntitySelectTextAsync(entityId, top, CancellationToken.None);
+    }
+
+    private async Task OpenAccessDialog()
+    {
+        if (_notebook == null || IsNew) return;
+        try
+        {
+            var access = await NotebookManager.GetNotebookAccess(Id, CancellationToken.None);
+            var model = new NotebookAccessDialog.NotebookAccessDialogModel
+            {
+                NotebookId = Id,
+                NotebookName = _notebook.Name ?? "Notebook",
+                Entries = access?.Entries?.ToList() ?? new List<NotebookAccessEntryInfo>()
+            };
+
+            var parameters = new DialogParameters
+            {
+                ["Model"] = model
+            };
+            var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+            var dialog = await DialogService.ShowAsync<NotebookAccessDialog>("Access", parameters, options);
+            var result = await dialog.Result;
+            if (!result.Canceled && result.Data is List<NotebookAccessEntryInfo> entries)
+            {
+                await NotebookManager.SetNotebookAccess(Id, entries, CancellationToken.None);
+                SnackbarExtensions.ShowPopupMessage(Snackbar, "Access updated.", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            SnackbarExtensions.ShowPopupMessage(Snackbar, ex.Message, Severity.Error);
+        }
     }
 }

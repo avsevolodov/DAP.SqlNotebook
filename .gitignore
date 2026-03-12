@@ -277,3 +277,6 @@ ollama/
 
 !ai-sql-service
 **/.*
+
+**/qdrant_storage/
+

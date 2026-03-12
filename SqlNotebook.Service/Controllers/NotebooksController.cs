@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using DAP.SqlNotebook.BL.Services.Notebook;
@@ -123,17 +124,89 @@ namespace DAP.SqlNotebook.Service.Controllers
             var timeoutSeconds = request.CommandTimeoutSeconds ?? defaultTimeoutSeconds;
             timeoutSeconds = Math.Clamp(timeoutSeconds, 1, 600);
 
+            var defaultMaxRows = _configuration.GetSection("SqlNotebook").GetValue("DefaultMaxRows", 10_000);
+            var maxRows = request.MaxRows ?? defaultMaxRows;
+            maxRows = Math.Clamp(maxRows, 1, 1_000_000);
+
             var queryToRun = request.Query?.Trim() ?? "";
             NotebookCellExecutionResultInfo result;
             if (request.CatalogNodeId.HasValue)
             {
-                result = await _nodeQueryExecutor.ExecuteAsync(request.CatalogNodeId.Value, queryToRun, timeoutSeconds, ct).ConfigureAwait(false);
+                result = await _nodeQueryExecutor.ExecuteAsync(request.CatalogNodeId.Value, queryToRun, timeoutSeconds, maxRows, ct).ConfigureAwait(false);
             }
             else
             {
-                result = await _notebookManager.ExecuteQueryAsync(queryToRun, timeoutSeconds, ct).ConfigureAwait(false);
+                result = await _notebookManager.ExecuteQueryAsync(queryToRun, timeoutSeconds, maxRows, ct).ConfigureAwait(false);
             }
             return Ok(result);
+        }
+
+        [HttpPost("{id:guid}/execute/export-csv")]
+        [Authorize(Policy = "EditorOrAdmin")]
+        public async Task<ActionResult> ExecuteExportCsv(
+            Guid id,
+            [FromBody] ConnectionExecutionRequest request,
+            CancellationToken ct)
+        {
+            if (request == null)
+                return BadRequest();
+            if (string.IsNullOrWhiteSpace(request.Query) && !request.CatalogNodeId.HasValue)
+                return BadRequest();
+
+            var login = User.Identity?.Name;
+            if (!await _accessManager.CanEditAsync(id, login, ct).ConfigureAwait(false))
+                return Forbid();
+
+            var defaultTimeoutSeconds = _configuration.GetSection("SqlNotebook").GetValue("DefaultCommandTimeoutSeconds", 30);
+            var timeoutSeconds = request.CommandTimeoutSeconds ?? defaultTimeoutSeconds;
+            timeoutSeconds = Math.Clamp(timeoutSeconds, 1, 600);
+            var exportMaxRows = request.MaxRows ?? 1_000_000;
+            exportMaxRows = Math.Clamp(exportMaxRows, 1, 1_000_000);
+
+            var queryToRun = request.Query?.Trim() ?? "";
+            NotebookCellExecutionResultInfo result;
+            if (request.CatalogNodeId.HasValue)
+                result = await _nodeQueryExecutor.ExecuteAsync(request.CatalogNodeId.Value, queryToRun, timeoutSeconds, exportMaxRows, ct).ConfigureAwait(false);
+            else
+                result = await _notebookManager.ExecuteQueryAsync(queryToRun, timeoutSeconds, exportMaxRows, ct).ConfigureAwait(false);
+
+            if (result.Status != NotebookCellExecutionStatusInfo.Success || result.Columns == null)
+            {
+                return BadRequest(result.Error ?? "Export failed.");
+            }
+
+            var csvBytes = BuildCsv(result.Columns, result.Rows ?? Array.Empty<ExecutionResultRowInfo>());
+            return File(csvBytes, "text/csv", "export.csv");
+        }
+
+        private static byte[] BuildCsv(ExecutionResultColumnInfo[] columns, ExecutionResultRowInfo[] rows)
+        {
+            var sb = new StringBuilder();
+            for (var i = 0; i < columns.Length; i++)
+            {
+                if (i > 0) sb.Append(',');
+                sb.Append(EscapeCsvField(columns[i].Name ?? ""));
+            }
+            sb.AppendLine();
+            foreach (var row in rows)
+            {
+                var values = row.Values?.ToList() ?? new List<string>();
+                for (var i = 0; i < columns.Length; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    sb.Append(EscapeCsvField(i < values.Count ? (values[i] ?? "") : ""));
+                }
+                sb.AppendLine();
+            }
+            return Encoding.UTF8.GetBytes(sb.ToString());
+        }
+
+        private static string EscapeCsvField(string value)
+        {
+            if (value == null) return "\"\"";
+            if (value.IndexOfAny(new[] { ',', '"', '\r', '\n' }) >= 0)
+                return "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+            return value;
         }
 
         [HttpGet("{id:guid}/access")]

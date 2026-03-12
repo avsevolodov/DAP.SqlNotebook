@@ -83,6 +83,9 @@ namespace DAP.SqlNotebook.Service.Client
         public static string GetNotebookExecuteRoute(Guid notebookId)
             => $"{Notebooks}/{notebookId}/execute";
 
+        public static string GetNotebookExecuteExportCsvRoute(Guid notebookId)
+            => $"{Notebooks}/{notebookId}/execute/export-csv";
+
         public static string GetWorkspaceByIdRoute(Guid workspaceId)
             => $"{Workspaces}/{workspaceId}";
 

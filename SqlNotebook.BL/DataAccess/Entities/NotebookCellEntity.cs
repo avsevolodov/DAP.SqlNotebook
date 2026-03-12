@@ -5,13 +5,12 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace DAP.SqlNotebook.BL.DataAccess.Entities
 {
     /// <summary>
-    /// Cell type: 0 = Sql, 1 = Markdown, 2 = Chart, 3 = Excalidraw, 4 = Mermaid.
+    /// Cell type: 0 = Sql, 1 = Markdown, 2 = (obsolete Chart, treated as Sql), 3 = Excalidraw, 4 = Mermaid.
     /// </summary>
     public enum NotebookCellTypeEntity
     {
         Sql = 0,
         Markdown = 1,
-        Chart = 2,
         Excalidraw = 3,
         Mermaid = 4,
     }

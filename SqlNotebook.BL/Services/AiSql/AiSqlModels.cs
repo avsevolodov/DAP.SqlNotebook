@@ -71,6 +71,7 @@ public sealed class AiSqlAutocompleteRequest
 {
     public string Sql { get; set; } = string.Empty;
     public List<string>? Entities { get; set; }
+    public int? CursorPosition { get; set; }
 }
 
 public sealed class AiSqlSuggestionItem

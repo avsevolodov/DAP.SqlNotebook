@@ -8,7 +8,7 @@ namespace DAP.SqlNotebook.BL.Services;
 
 public interface IQueryExecutionService
 {
-    Task<NotebookCellExecutionResultInfo> ExecuteAsync(string query, int timeoutSeconds, CancellationToken ct);
+    Task<NotebookCellExecutionResultInfo> ExecuteAsync(string query, int timeoutSeconds, int? maxRows = null, CancellationToken ct = default);
 }
 
 public sealed class QueryExecutionService : IQueryExecutionService
@@ -20,11 +20,11 @@ public sealed class QueryExecutionService : IQueryExecutionService
         _executor = executor ?? throw new ArgumentNullException(nameof(executor));
     }
 
-    public async Task<NotebookCellExecutionResultInfo> ExecuteAsync(string query, int timeoutSeconds, CancellationToken ct)
+    public async Task<NotebookCellExecutionResultInfo> ExecuteAsync(string query, int timeoutSeconds, int? maxRows = null, CancellationToken ct = default)
     {
         try
         {
-            var result = await _executor.ExecuteAsync(query, timeoutSeconds, ct);
+            var result = await _executor.ExecuteAsync(query, timeoutSeconds, maxRows, ct);
             return new NotebookCellExecutionResultInfo
             {
                 Status = NotebookCellExecutionStatusInfo.Success,

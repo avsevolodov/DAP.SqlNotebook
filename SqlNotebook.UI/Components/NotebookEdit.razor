@@ -35,11 +35,12 @@
                                                       CanMoveDown="@(cellIndex < _cellsList.Count - 1)"
                                                       OnCellUpdated="OnCellUpdated" />
                             }
-                            else if (cell.Type == NotebookCellTypeInfo.Sql || cell.Type == NotebookCellTypeInfo.Chart)
+                            else if (cell.Type == NotebookCellTypeInfo.Sql)
                             {
                                 <NotebookCodeCell Cell="cell"
                                                   NotebookId="@NotebookId"
                                                   QueryTimeoutSeconds="@QueryTimeoutSeconds"
+                                                  SelectTopCount="@SelectTopCount"
                                                   SelectedDatabase="@SelectedDatabase"
                                                   OnChartTypeChanged="OnChartTypeChanged"
                                                   OnFormatCell="OnFormatCell"
@@ -250,22 +251,30 @@
                                                Size="Size.Small"
                                                Color="@(IsCurrentResultChartSelected("line") ? Color.Primary : Color.Default)"
                                                Title="Line chart"
+                                           Disabled="@(!_canShowLineChart)"
                                                OnClick="SetCurrentResultChartTypeLine" />
                                 <MudIconButton Icon="@Icons.Material.Filled.BarChart"
                                                Size="Size.Small"
                                                Color="@(IsCurrentResultChartSelected("bar") ? Color.Primary : Color.Default)"
                                                Title="Bar chart"
+                                           Disabled="@(!_canShowBarChart)"
                                                OnClick="SetCurrentResultChartTypeBar" />
                                 <MudIconButton Icon="@Icons.Material.Filled.PieChart"
                                                Size="Size.Small"
                                                Color="@(IsCurrentResultChartSelected("pie") ? Color.Primary : Color.Default)"
                                                Title="Pie chart"
+                                           Disabled="@(!_canShowPieChart)"
                                                OnClick="SetCurrentResultChartTypePie" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Download"
+                                               Size="Size.Small"
+                                               Title="Download CSV (full result)"
+                                               OnClick="DownloadCurrentResultCsv" />
                             </MudStack>
                         }
                         <NotebookQueryResult Result="@CurrentRunResult"
                                              MaxHeight="300"
-                                             ForceTable="@(_currentResultView == ResultViewMode.Table)" />
+                                             ForceTable="@(_currentResultView == ResultViewMode.Table)"
+                                             EffectiveChartType="@_currentResultChartType" />
                     </div>
                 }
             }
@@ -285,7 +294,7 @@
                     </MudItem>
                     <MudItem xs="12" md="6">
                         <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">Preview</MudText>
-                        <MudPaper Class="pa-2" Elevation="0" Style="max-height: 300px; overflow:auto;">
+                        <MudPaper Class="pa-2" Elevation="0">
                             <MudMarkdown Value="@(SqlEditorContent ?? string.Empty)" Props="GetMarkdownProps()" />
                         </MudPaper>
                     </MudItem>
@@ -393,6 +402,9 @@
     private int _lastCellCount = -1;
     private MudMarkdownProps? _cachedMarkdownProps;
     private string? _currentResultChartType;
+    private bool _canShowLineChart;
+    private bool _canShowBarChart;
+    private bool _canShowPieChart;
 
     private enum ResultViewMode
     {
@@ -425,6 +437,8 @@
                 ? ResultViewMode.Table
                 : ResultViewMode.Charts;
         }
+
+        UpdateChartCapabilities();
     }
 
     private async Task MoveCellUp(int index)
@@ -628,22 +642,71 @@
         {
             _currentResultView = ResultViewMode.Table;
             _currentResultChartType = null;
-            if (CurrentRunResult != null)
-                CurrentRunResult.ChartType = null;
         }
         else
         {
             _currentResultView = ResultViewMode.Charts;
             _currentResultChartType = ct;
-            if (CurrentRunResult != null)
-                CurrentRunResult.ChartType = ct;
         }
+        StateHasChanged();
     }
 
     private void SetCurrentResultChartTypeTable() => SetCurrentResultChartType("table");
     private void SetCurrentResultChartTypeLine() => SetCurrentResultChartType("line");
     private void SetCurrentResultChartTypeBar() => SetCurrentResultChartType("bar");
     private void SetCurrentResultChartTypePie() => SetCurrentResultChartType("pie");
+
+    private void UpdateChartCapabilities()
+    {
+        _canShowLineChart = _canShowBarChart = _canShowPieChart = false;
+        var result = CurrentRunResult;
+        if (result?.Columns == null || result.Columns.Length == 0 || result.Rows == null || result.Rows.Length == 0)
+            return;
+
+        var colCount = result.Columns.Length;
+        var rows = result.Rows;
+        var bestNumericCount = 0;
+
+        for (var c = 0; c < colCount; c++)
+        {
+            var numericCount = 0;
+            foreach (var row in rows)
+            {
+                var values = row.Values?.ToList() ?? new List<string>();
+                var cell = c < values.Count ? values[c] ?? string.Empty : string.Empty;
+                if (TryParseDouble(cell, out _))
+                    numericCount++;
+            }
+
+            if (numericCount > 0)
+            {
+                _canShowLineChart = true;
+                _canShowBarChart = true;
+                if (numericCount > bestNumericCount)
+                    bestNumericCount = numericCount;
+            }
+        }
+
+        _canShowPieChart = bestNumericCount > 0;
+    }
+
+    private static bool TryParseDouble(string? text, out double value)
+    {
+        return double.TryParse(
+            text?.Trim(),
+            System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowThousands,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out value);
+    }
+
+    private async Task DownloadCurrentResultCsv()
+    {
+        var query = (SqlEditorContent ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(query)) return;
+        var path = $"/api/v1/notebooks/{NotebookId}/execute/export-csv";
+        var body = new { Query = query, CommandTimeoutSeconds = QueryTimeoutSeconds ?? 30, CatalogNodeId = SelectedDatabase?.Id };
+        await JS.InvokeVoidAsync("sqlNotebookDownloadCsv", path, body);
+    }
 
     private async Task HandleAddCell(NotebookCellTypeInfo cellType)
     {
@@ -866,7 +929,7 @@
 
     private async Task FormatCellContent(NotebookCellInfo cell)
     {
-        if (cell.Type != NotebookCellTypeInfo.Sql && cell.Type != NotebookCellTypeInfo.Chart) return;
+        if (cell.Type != NotebookCellTypeInfo.Sql) return;
         var formatted = SqlFormatterHelper.Format(cell.Content);
         if (formatted == cell.Content) return;
         if (OnFormatCell.HasDelegate)

@@ -18,5 +18,8 @@ namespace DAP.SqlNotebook.Contract.Entities
 
         /// <summary>Catalog node Id (database/source) to run the query against. If null, default app connection is used.</summary>
         public Guid? CatalogNodeId { get; set; }
+
+        /// <summary>Maximum number of rows to return (e.g. TOP N). If null, server default is used. Use for export when you need more.</summary>
+        public int? MaxRows { get; set; }
     }
 }

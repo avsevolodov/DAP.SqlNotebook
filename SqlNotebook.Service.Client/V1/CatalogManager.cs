@@ -82,7 +82,8 @@ public class CatalogManager : ICatalogManager
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return null;
         await response.ManagementServiceEnsureSuccessStatusCode();
-        return await response.CdpReadContentAsAsync<string>(ct);
+        // Endpoint returns plain text (SQL), not JSON; read raw string.
+        return await response.Content.ReadAsStringAsync(ct);
     }
 
     public async Task<IReadOnlyList<DbEntityInfo>> GetEntitiesAsync(Guid? nodeId, CancellationToken ct)

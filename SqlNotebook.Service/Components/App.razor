@@ -113,7 +113,9 @@
                             readOnly: false,
                             automaticLayout: false,
                             minimap: { enabled: false },
-                            scrollBeyondLastLine: false
+                            scrollBeyondLastLine: false,
+                            quickSuggestions: { other: true, comments: false, strings: false },
+                            suggestOnTriggerCharacters: true
                         });
                         addResizeListener();
                         setTimeout(function () {
@@ -149,7 +151,9 @@
                                 readOnly: false,
                                 automaticLayout: false,
                                 minimap: { enabled: false },
-                                scrollBeyondLastLine: false
+                                scrollBeyondLastLine: false,
+                                quickSuggestions: { other: true, comments: false, strings: false },
+                                suggestOnTriggerCharacters: true
                             });
                             el.style.pointerEvents = 'auto';
                             el.style.userSelect = 'text';
@@ -226,17 +230,25 @@
                 },
                 registerAutocomplete: function () {
                     if (!window.monaco || autocompleteRegistered) return;
+                    function getReplaceRange(model, position) {
+                        var word = model.getWordUntilPosition(position);
+                        var startCol = word && word.startColumn != null ? word.startColumn : position.column;
+                        return new monaco.Range(position.lineNumber, startCol, position.lineNumber, position.column);
+                    }
+                    function getCursorOffset(model, position) {
+                        if (typeof model.getOffsetAt === 'function') return model.getOffsetAt(position);
+                        var lineCount = model.getLineCount();
+                        var offset = 0;
+                        for (var ln = 1; ln < position.lineNumber && ln <= lineCount; ln++)
+                            offset += (model.getLineContent(ln) || '').length + 1;
+                        offset += Math.max(0, position.column - 1);
+                        return offset;
+                    }
                     monaco.languages.registerCompletionItemProvider('sql', {
                         triggerCharacters: [' ', '.', ','],
                         provideCompletionItems: async function (model, position) {
                             try {
-                                var lineContent = model.getLineContent(position.lineNumber) || '';
-                                var textBeforeCursor = lineContent.substring(0, position.column - 1);
-                                var match = textBeforeCursor.match(/([\w.]+)$/);
-                                var prefix = match ? match[1] : '';
-                                var startColumn = match ? (position.column - match[1].length) : position.column;
-                                var range = new monaco.Range(position.lineNumber, startColumn, position.lineNumber, position.column);
-
+                                var range = getReplaceRange(model, position);
                                 var sql = model.getValue() || '';
                                 var body = { sql: sql, line: position.lineNumber, column: position.column };
                                 var response = await fetch('/api/v1/schema/autocomplete', {
@@ -270,15 +282,11 @@
                         triggerCharacters: [' ', '.', ','],
                         provideCompletionItems: async function (model, position) {
                             var sql = model.getValue() || '';
-                            var lineContent = model.getLineContent(position.lineNumber) || '';
-                            var textBefore = lineContent.substring(0, position.column - 1);
-                            var match = textBefore.match(/([\w.]+)$/);
-                            var range = match
-                                ? new monaco.Range(position.lineNumber, position.column - match[1].length, position.lineNumber, position.column)
-                                : new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column);
+                            var range = getReplaceRange(model, position);
+                            var cursorPosition = getCursorOffset(model, position);
                             var entity = null;
                             try { var u = new URL(window.location.href); entity = u.searchParams.get('entity'); } catch (e) {}
-                            var req = { sql: sql, entities: entity ? [entity] : [], range: range };
+                            var req = { sql: sql, entities: entity ? [entity] : [], cursor_position: cursorPosition, range: range };
                             return new Promise(function (resolve) {
                                 if (aiAutocompleteTimeoutId) clearTimeout(aiAutocompleteTimeoutId);
                                 aiAutocompleteLastReq = req;
@@ -290,7 +298,7 @@
                                         var res = await fetch('/api/v1/ai/sql/autocomplete', {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ sql: r.sql, entities: r.entities })
+                                            body: JSON.stringify({ sql: r.sql, entities: r.entities, cursor_position: r.cursor_position })
                                         });
                                         if (!res.ok) { resolve({ suggestions: [] }); return; }
                                         var data = await res.json();

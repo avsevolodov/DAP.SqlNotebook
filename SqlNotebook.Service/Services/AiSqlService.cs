@@ -79,17 +79,33 @@ public sealed class AiSqlHttpBackend : IAiSqlBackend
         }
     }
 
+    private static readonly TimeSpan AutocompleteHttpTimeout = TimeSpan.FromSeconds(5);
+
     public async Task<AiSqlAutocompleteResult> AutocompleteAsync(AiSqlAutocompleteRequest request, CancellationToken ct)
     {
         var url = _configuration["AiSqlService:AutocompleteUrl"] ?? "http://localhost:8000/autocomplete-sql";
         var client = _httpClientFactory.CreateClient();
+        client.Timeout = AutocompleteHttpTimeout;
         HttpResponseMessage response;
         try
         {
-            response = await client.PostAsJsonAsync(url, new { sql = request.Sql, entities = request.Entities }, ct).ConfigureAwait(false);
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(AutocompleteHttpTimeout);
+            response = await client.PostAsJsonAsync(
+                url,
+                new
+                {
+                    sql = request.Sql,
+                    entities = request.Entities,
+                    cursor_position = request.CursorPosition,
+                },
+                timeoutCts.Token
+            ).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
+            if (ex is OperationCanceledException or TaskCanceledException)
+                throw;
             return new AiSqlAutocompleteResult
             {
                 Suggestion = "",

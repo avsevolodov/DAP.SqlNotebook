@@ -1,4 +1,4 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36804.6
@@ -455,6 +455,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "AI", "AI", "{18E2B2E1-982C-
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Common", "Common", "{CF58CD3D-B180-439F-8085-82996116539A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlNotebook.BL.Tests", "SqlNotebook.BL.Tests\SqlNotebook.BL.Tests.csproj", "{96E8D598-3A5A-4BF3-B2FE-43F6EF7E6DF4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -497,6 +499,10 @@ Global
 		{266ABC55-5247-499C-9B1E-3BD763FF7A96}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{266ABC55-5247-499C-9B1E-3BD763FF7A96}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{266ABC55-5247-499C-9B1E-3BD763FF7A96}.Release|Any CPU.Build.0 = Release|Any CPU
+		{96E8D598-3A5A-4BF3-B2FE-43F6EF7E6DF4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{96E8D598-3A5A-4BF3-B2FE-43F6EF7E6DF4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{96E8D598-3A5A-4BF3-B2FE-43F6EF7E6DF4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{96E8D598-3A5A-4BF3-B2FE-43F6EF7E6DF4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

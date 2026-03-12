@@ -28,7 +28,7 @@ public sealed class NodeQueryExecutorService : INodeQueryExecutorService
         _kafkaReader = kafkaReader ?? throw new ArgumentNullException(nameof(kafkaReader));
     }
 
-    public async Task<NotebookCellExecutionResultInfo> ExecuteAsync(Guid catalogNodeId, string query, int timeoutSeconds, CancellationToken ct = default)
+    public async Task<NotebookCellExecutionResultInfo> ExecuteAsync(Guid catalogNodeId, string query, int timeoutSeconds, int? maxRows = null, CancellationToken ct = default)
     {
         try
         {
@@ -85,7 +85,7 @@ public sealed class NodeQueryExecutorService : INodeQueryExecutorService
             }
             var authTypeForBuild = useBasicAuth ? "Basic" : node.AuthType;
             var connStr = strategy.BuildConnectionString(node.ConnectionInfo.Trim(), node.DatabaseName, authTypeForBuild, node.Login, password);
-            var result = await strategy.ExecuteQueryAsync(connStr, query, timeoutSeconds, ct).ConfigureAwait(false);
+            var result = await strategy.ExecuteQueryAsync(connStr, query, timeoutSeconds, maxRows, ct).ConfigureAwait(false);
 
             return new NotebookCellExecutionResultInfo
             {

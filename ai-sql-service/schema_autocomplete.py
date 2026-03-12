@@ -113,10 +113,11 @@ def build_schema_compact_for_autocomplete(
     max_columns_per_table: int = 15,
 ) -> str:
     """
-    Build short schema for autocomplete: table(col1, col2, ...).
+    Build short schema for autocomplete: table(col1 datatype, col2 datatype, ...).
     - focus_entity_names: top tables user is working with (from body.entities).
     - Expand with related tables via RAG (retriever).
     - For each table, include columns in order: PK, FK-like, measure types, rest; max max_columns_per_table.
+    - Include short data type after each column so LLM understands numeric/text/date etc.
     """
     entities = _entities_list(schema)
     if not entities:
@@ -136,7 +137,28 @@ def build_schema_compact_for_autocomplete(
         name = (e.get("displayName") or e.get("Name") or e.get("name") or "?").strip()
         fields = e.get("fields") or e.get("Fields") or []
         cols = _sort_columns_for_autocomplete(fields, max_columns_per_table)
-        col_str = ", ".join(cols)
+
+        # Map column name -> data type (shortened for readability).
+        type_by_name: dict[str, str] = {}
+        for f in fields:
+            fname = (f.get("name") or f.get("Name") or "").strip()
+            if not fname:
+                continue
+            dt = (f.get("dataType") or f.get("DataType") or "").strip()
+            if dt:
+                # Keep only first token of type, e.g. "nvarchar(255)" -> "nvarchar".
+                short = dt.split()[0]
+                type_by_name[fname] = short
+
+        col_parts: list[str] = []
+        for c in cols:
+            t = type_by_name.get(c)
+            if t:
+                col_parts.append(f"{c} {t}")
+            else:
+                col_parts.append(c)
+
+        col_str = ", ".join(col_parts)
         if len(fields) > max_columns_per_table:
             col_str += ", ..."
         lines.append(f"{name}({col_str})")

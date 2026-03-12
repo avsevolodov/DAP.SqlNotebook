@@ -80,6 +80,6 @@ public sealed class NotebookManager : INotebookManager
 
     public Task DeleteAsync(Guid id, CancellationToken ct) => _repository.DeleteAsync(id, ct);
 
-    public Task<NotebookCellExecutionResultInfo> ExecuteQueryAsync(string query, int timeoutSeconds, CancellationToken ct)
-        => _queryExecutionService.ExecuteAsync(query, timeoutSeconds, ct);
+    public Task<NotebookCellExecutionResultInfo> ExecuteQueryAsync(string query, int timeoutSeconds, int? maxRows = null, CancellationToken ct = default)
+        => _queryExecutionService.ExecuteAsync(query, timeoutSeconds, maxRows, ct);
 }

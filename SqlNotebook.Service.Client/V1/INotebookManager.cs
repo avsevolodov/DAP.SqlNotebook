@@ -22,7 +22,10 @@ public interface INotebookManager
 
     Task DeleteNotebook(Guid id, CancellationToken ct);
 
-    Task<NotebookCellExecutionResultInfo> ExecuteQuery(Guid notebookId, string query, CancellationToken ct, int? commandTimeoutSeconds = null, Guid? catalogNodeId = null);
+    Task<NotebookCellExecutionResultInfo> ExecuteQuery(Guid notebookId, string query, CancellationToken ct, int? commandTimeoutSeconds = null, Guid? catalogNodeId = null, int? maxRows = null);
+
+    /// <summary>Execute query and download full result as CSV file. Uses high row limit for export.</summary>
+    Task<Stream> ExecuteQueryExportCsvAsync(Guid notebookId, string query, CancellationToken ct, int? commandTimeoutSeconds = null, Guid? catalogNodeId = null);
 
     Task<NotebookAccessResponse> GetNotebookAccess(Guid notebookId, CancellationToken ct);
     Task SetNotebookAccess(Guid notebookId, IReadOnlyList<NotebookAccessEntryInfo> entries, CancellationToken ct);

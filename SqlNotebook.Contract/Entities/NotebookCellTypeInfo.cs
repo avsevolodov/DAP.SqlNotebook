@@ -16,9 +16,6 @@ namespace DAP.SqlNotebook.Contract.Entities
         [EnumMember(Value = @"Markdown")]
         Markdown = 1,
 
-        [EnumMember(Value = @"Chart")]
-        Chart = 2,
-
         [EnumMember(Value = @"Excalidraw")]
         Excalidraw = 3,
 

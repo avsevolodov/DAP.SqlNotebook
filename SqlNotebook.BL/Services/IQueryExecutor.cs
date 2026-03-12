@@ -9,7 +9,7 @@ namespace DAP.SqlNotebook.BL.Services;
 /// </summary>
 public interface IQueryExecutor
 {
-    Task<QueryResult> ExecuteAsync(string query, int timeoutSeconds, CancellationToken ct);
+    Task<QueryResult> ExecuteAsync(string query, int timeoutSeconds, int? maxRows = null, CancellationToken ct = default);
 }
 
 public sealed class QueryResult

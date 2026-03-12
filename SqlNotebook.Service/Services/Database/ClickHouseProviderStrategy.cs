@@ -110,7 +110,7 @@ public sealed class ClickHouseProviderStrategy : IDbProviderStrategy
         return (tables, columns);
     }
 
-    public async Task<QueryResult> ExecuteQueryAsync(string connectionString, string query, int timeoutSeconds, CancellationToken ct = default)
+    public async Task<QueryResult> ExecuteQueryAsync(string connectionString, string query, int timeoutSeconds, int? maxRows = null, CancellationToken ct = default)
     {
         await using var conn = new ClickHouseConnection(connectionString);
         await conn.OpenAsync(ct).ConfigureAwait(false);
@@ -122,7 +122,8 @@ public sealed class ClickHouseProviderStrategy : IDbProviderStrategy
         for (var i = 0; i < reader.FieldCount; i++)
             columnNames.Add(reader.GetName(i));
         var rows = new List<IReadOnlyList<string>>();
-        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        var limit = maxRows ?? int.MaxValue;
+        while (await reader.ReadAsync(ct).ConfigureAwait(false) && rows.Count < limit)
         {
             var values = new string[reader.FieldCount];
             for (var i = 0; i < reader.FieldCount; i++)
