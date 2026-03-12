@@ -2,6 +2,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AutoMapper;
 using DAP.SqlNotebook.BL.Services.AiSql;
+using DAP.SqlNotebook.Contract;
 using DAP.SqlNotebook.Contract.Entities;
 using DAP.SqlNotebook.Service.Helpers;
 using Microsoft.AspNetCore.Mvc;
@@ -9,7 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace DAP.SqlNotebook.Service.Controllers
 {
     [ApiController]
-    [Route("api/v1/ai/sql")]
+    [Route(ApiRoutes.AiSql)]
     public class AiSqlController : ControllerBase
     {
         private readonly IAiSqlService _aiSqlService;

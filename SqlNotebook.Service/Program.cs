@@ -6,7 +6,13 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
-var builder = WebApplication.CreateBuilder(args);
+namespace DAP.SqlNotebook.Service;
+
+public class Program
+{
+    public static void Main(string[] args)
+    {
+        var builder = WebApplication.CreateBuilder(args);
 
 // Services
 builder.Services.AddHttpContextAccessor();
@@ -34,40 +40,42 @@ builder.Services
     .AddRazorComponents()
     .AddInteractiveWebAssemblyComponents();
 
-builder.Services.AddHttpClient();
+        builder.Services.AddHttpClient();
 
-IoCConfigurator.AddManagementServices(builder.Services, new ServiceSettings());
+        IoCConfigurator.AddManagementServices(builder.Services, new ServiceSettings());
 
-var app = builder.Build();
+        var app = builder.Build();
 
-// Middleware pipeline
-app.UseAntiforgery();
+        // Middleware pipeline
+        app.UseAntiforgery();
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseDeveloperExceptionPage();
-    app.UseWebAssemblyDebugging();
+        if (app.Environment.IsDevelopment())
+        {
+            app.UseDeveloperExceptionPage();
+            app.UseWebAssemblyDebugging();
+        }
+        else
+        {
+            app.UseExceptionHandler();
+            app.UseHsts();
+        }
+
+        app.UseHttpsRedirection();
+
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            ServeUnknownFileTypes = true,
+            DefaultContentType = "application/octet-stream",
+        });
+
+        app.UseAuthentication();
+        app.UseAuthorization();
+
+        app.MapControllers();
+        app.MapRazorComponents<DAP.SqlNotebook.Service.Components.App>()
+            .AddInteractiveWebAssemblyRenderMode()
+            .AddAdditionalAssemblies(typeof(DAP.SqlNotebook.UI._Imports).Assembly);
+
+        app.Run();
+    }
 }
-else
-{
-    app.UseExceptionHandler();
-    app.UseHsts();
-}
-
-app.UseHttpsRedirection();
-
-app.UseStaticFiles(new StaticFileOptions
-{
-    ServeUnknownFileTypes = true,
-    DefaultContentType = "application/octet-stream",
-});
-
-app.UseAuthentication();
-app.UseAuthorization();
-
-app.MapControllers();
-app.MapRazorComponents<DAP.SqlNotebook.Service.Components.App>()
-    .AddInteractiveWebAssemblyRenderMode()
-    .AddAdditionalAssemblies(typeof(DAP.SqlNotebook.UI._Imports).Assembly);
-
-app.Run();

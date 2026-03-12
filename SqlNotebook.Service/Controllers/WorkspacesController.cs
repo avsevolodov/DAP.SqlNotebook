@@ -13,7 +13,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace DAP.SqlNotebook.Service.Controllers;
 
 [ApiController]
-[Route("api/v1/workspaces")]
+[Route(ApiRoutes.Workspaces)]
 [Authorize]
 public class WorkspacesController : ControllerBase
 {

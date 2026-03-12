@@ -5,12 +5,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using DAP.SqlNotebook.BL.DataAccess;
 using DAP.SqlNotebook.BL.Models;
+using DAP.SqlNotebook.Contract;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DAP.SqlNotebook.Service.Controllers;
 
 [ApiController]
-[Route("api/v1/schema")]
+[Route(ApiRoutes.Schema)]
 public class SchemaController : ControllerBase
 {
     private readonly ICatalogRepository _catalog;

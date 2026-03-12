@@ -545,3 +545,66 @@ code {
     min-width: 0;
     max-width: 100%;
 }
+/* Markdown cell editor: Monaco + synchronized preview, resizable split */
+.notebook-markdown-split {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    min-height: 260px;
+    align-items: stretch;
+}
+.notebook-markdown-split-editor {
+    flex-shrink: 0;
+    min-width: 200px;
+    max-width: calc(100% - 200px);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.notebook-markdown-split-resizer {
+    width: 4px;
+    flex-shrink: 0;
+    cursor: col-resize;
+    background: transparent;
+}
+.notebook-markdown-split-resizer:hover {
+    background: rgba(0, 0, 0, 0.12);
+}
+.notebook-markdown-split-preview {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.notebook-markdown-editor {
+    width: 100%;
+    height: 100%;
+}
+.notebook-markdown-preview-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+
+/* Cell fullscreen (Markdown, Code, Mermaid, Excalidraw) */
+.notebook-cell-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 1300;
+    margin: 0;
+    border-radius: 0;
+    background-color: var(--mud-palette-background);
+}
+.notebook-cell-fullscreen .notebook-markdown-split,
+.notebook-cell-fullscreen .notebook-excalidraw-wrap {
+    min-height: calc(100vh - 96px);
+}
+.notebook-cell-fullscreen .notebook-markdown-preview-scroll {
+    max-height: none;
+}
+.notebook-cell-fullscreen .notebook-cell-content-area {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: calc(100vh - 96px);
+}

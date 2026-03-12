@@ -13,6 +13,7 @@ public static class ServiceCollectionExtensions
             .AddScoped<INotebookFavoritesClient, NotebookFavoritesClient>()
             .AddScoped<ICatalogManager, CatalogManager>()
             .AddScoped<IAiAssistClient, AiAssistClient>()
-            .AddScoped<IAiSqlClient, AiSqlClient>();
+            .AddScoped<IAiSqlClient, AiSqlClient>()
+            .AddScoped<ISchemaClient, SchemaClient>();
     }
 }

@@ -4,8 +4,11 @@
 @using MudBlazor
 @using global::SqlNotebook.Mermaid.Components
 
-<MudPaper Class="pa-3 notebook-cell-paper" Elevation="1" Outlined="true">
-    <MudStack Spacing="2">
+<MudPaper Class="@($"pa-3 notebook-cell-paper {(_isFullscreen ? "notebook-cell-fullscreen" : string.Empty)}")"
+          Elevation="1"
+          Outlined="true"
+          Style="@(_isFullscreen ? "position:fixed; inset:0; z-index:1300; margin:0; border-radius:0; background-color: var(--mud-palette-background);" : null)">
+    <MudStack Spacing="2" Style="@(_isFullscreen ? "height:100%; align-items:stretch;" : null)">
         <div class="d-flex align-items-center flex-wrap" style="gap: 8px;">
             <MudIconButton Icon="@(_collapsed ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ExpandLess)"
                            Size="Size.Small"
@@ -50,6 +53,20 @@
                            Disabled="@(!_isDirty)"
                            Title="Save"
                            OnClick="Save" />
+            @if (_isFullscreen)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.FullscreenExit"
+                               Size="Size.Small"
+                               Title="Exit fullscreen (Esc)"
+                               OnClick="ToggleFullscreen" />
+            }
+            else
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Fullscreen"
+                               Size="Size.Small"
+                               Title="Enter fullscreen"
+                               OnClick="ToggleFullscreen" />
+            }
             <div class="flex-grow-1"></div>
             @if (!_collapsed)
             {
@@ -61,19 +78,21 @@
         </div>
         @if (!_collapsed)
         {
-            <MudTextField Value="@Cell.Content"
-                          ValueChanged="@(EventCallback.Factory.Create<string>(this, HandleContentChanged))"
-                          Label="Mermaid code"
-                          Variant="Variant.Outlined"
-                          Lines="6"
-                          Placeholder="graph TD&#10;  A --> B"
-                          Immediate="true" />
-            @if (!string.IsNullOrWhiteSpace(Cell.Content))
-            {
-                <div class="mermaid-cell-preview mt-2">
-                    <MermaidDiagram Text="@Cell.Content" CssClass="mermaid-cell-diagram" />
-                </div>
-            }
+            <div class="@(_isFullscreen ? "notebook-cell-content-area" : null)" style="@(_isFullscreen ? "flex:1 1 auto; min-height:0; overflow:auto;" : null)">
+                <MudTextField Value="@Cell.Content"
+                              ValueChanged="@(EventCallback.Factory.Create<string>(this, HandleContentChanged))"
+                              Label="Mermaid code"
+                              Variant="Variant.Outlined"
+                              Lines="6"
+                              Placeholder="graph TD&#10;  A --> B"
+                              Immediate="true" />
+                @if (!string.IsNullOrWhiteSpace(Cell.Content))
+                {
+                    <div class="mermaid-cell-preview mt-2" style="@(_isFullscreen ? "min-height: 50%;" : null)">
+                        <MermaidDiagram Text="@Cell.Content" CssClass="mermaid-cell-diagram" />
+                    </div>
+                }
+            </div>
         }
     </MudStack>
 </MudPaper>
@@ -93,8 +112,11 @@
     private bool _isDirty;
     private bool _editingTitle;
     private string? _titleEdit;
+    private bool _isFullscreen;
 
     private void ToggleCollapsed() => _collapsed = !_collapsed;
+
+    private void ToggleFullscreen() => _isFullscreen = !_isFullscreen;
 
     private void HandleContentChanged(string value)
     {

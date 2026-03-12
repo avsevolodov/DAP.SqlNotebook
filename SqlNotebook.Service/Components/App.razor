@@ -99,6 +99,8 @@
                 return s.split('\n').map(function (line) { return line.trim(); }).join('\n').replace(/\n\s*\n/g, '\n').trim();
             }
             window.sqlNotebookMonaco = {
+                contentChangeHandlers: {},
+                previewBindings: {},
                 create: function (elementId, language, value) {
                     ensureMonaco(function () {
                         var el = document.getElementById(elementId);
@@ -219,6 +221,10 @@
                     var ed = editors[elementId];
                     if (ed) try { ed.updateOptions({ readOnly: false }); } catch (e) {}
                 },
+                layout: function (elementId) {
+                    var ed = editors[elementId];
+                    if (ed && ed.layout) try { ed.layout(); } catch (e) {}
+                },
                 registerRunCommand: function (elementId, dotNetRef) {
                     var ed = editors[elementId];
                     if (!ed || !dotNetRef) return;
@@ -337,6 +343,41 @@
                         }
                     });
                     autocompleteRegistered = true;
+                },
+                registerContentChanged: function (elementId, dotNetRef, methodName) {
+                    var ed = editors[elementId];
+                    if (!ed || !dotNetRef) return;
+                    methodName = methodName || 'OnMonacoContentChanged';
+                    var key = elementId + '|' + methodName;
+                    if (this.contentChangeHandlers[key]) return;
+                    var handler = ed.onDidChangeModelContent(function () {
+                        try {
+                            var value = ed.getValue ? (ed.getValue() || '') : '';
+                            dotNetRef.invokeMethodAsync(methodName, value);
+                        } catch (e) { }
+                    });
+                    this.contentChangeHandlers[key] = handler;
+                },
+                bindScrollToPreview: function (elementId, previewElementId) {
+                    var ed = editors[elementId];
+                    var preview = document.getElementById(previewElementId);
+                    if (!ed || !preview) return;
+                    this.previewBindings[elementId] = { previewId: previewElementId };
+                    ed.onDidScrollChange(function () {
+                        try {
+                            var scrollTop = ed.getScrollTop ? ed.getScrollTop() : 0;
+                            var scrollHeight = ed.getScrollHeight ? ed.getScrollHeight() : 0;
+                            var layoutInfo = ed.getLayoutInfo ? ed.getLayoutInfo() : null;
+                            var visibleHeight = layoutInfo && layoutInfo.height ? layoutInfo.height : preview.clientHeight;
+                            if (scrollHeight <= visibleHeight || visibleHeight <= 0) return;
+                            var ratio = scrollTop / (scrollHeight - visibleHeight);
+                            var p = document.getElementById(previewElementId);
+                            if (!p) return;
+                            var targetScrollable = p.scrollHeight - p.clientHeight;
+                            if (targetScrollable <= 0) return;
+                            p.scrollTop = ratio * targetScrollable;
+                        } catch (e) { }
+                    });
                 }
             };
         })();
@@ -359,6 +400,30 @@
                     document.removeEventListener('mouseup', up);
                     document.body.style.cursor = '';
                     document.body.style.userSelect = '';
+                }
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                document.addEventListener('mousemove', move);
+                document.addEventListener('mouseup', up);
+            },
+            startMarkdownSplitResize: function (containerId, dotNetRef, startClientX, minPercent, maxPercent) {
+                minPercent = minPercent != null ? minPercent : 20;
+                maxPercent = maxPercent != null ? maxPercent : 80;
+                function move(e) {
+                    var container = document.getElementById(containerId);
+                    if (!container) return;
+                    var rect = container.getBoundingClientRect();
+                    var leftPx = e.clientX - rect.left;
+                    var percent = (leftPx / rect.width) * 100;
+                    percent = Math.max(minPercent, Math.min(maxPercent, percent));
+                    dotNetRef.invokeMethodAsync('OnMarkdownSplitResize', percent);
+                }
+                function up() {
+                    document.removeEventListener('mousemove', move);
+                    document.removeEventListener('mouseup', up);
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                    try { dotNetRef.invokeMethodAsync('OnMarkdownSplitResizeEnd'); } catch (e) {}
                 }
                 document.body.style.cursor = 'col-resize';
                 document.body.style.userSelect = 'none';

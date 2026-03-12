@@ -7,6 +7,7 @@ using AutoMapper;
 using DAP.SqlNotebook.BL.DataAccess;
 using DAP.SqlNotebook.BL.Models;
 using DAP.SqlNotebook.BL.Services;
+using DAP.SqlNotebook.Contract;
 using DAP.SqlNotebook.Contract.Entities;
 using DAP.SqlNotebook.Service.Services;
 using DAP.SqlNotebook.Service.Services.Kafka;
@@ -17,7 +18,7 @@ using DbFieldInfo = DAP.SqlNotebook.Contract.Entities.DbFieldInfo;
 namespace DAP.SqlNotebook.Service.Controllers
 {
     [ApiController]
-    [Route("api/v1/catalog")]
+    [Route(ApiRoutes.Catalog)]
     public class CatalogController : ControllerBase
     {
         private readonly ICatalogRepository _repository;

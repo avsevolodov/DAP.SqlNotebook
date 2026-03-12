@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DAP.SqlNotebook.BL.Services.Notebook;
 using DAP.SqlNotebook.BL.Services.NotebookAccess;
+using DAP.SqlNotebook.Contract;
 using DAP.SqlNotebook.Contract.Entities;
 using DAP.SqlNotebook.Service.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -15,7 +16,7 @@ using Microsoft.Extensions.Configuration;
 namespace DAP.SqlNotebook.Service.Controllers
 {
     [ApiController]
-    [Route("api/v1/notebooks")]
+    [Route(ApiRoutes.Notebooks)]
     [Authorize]
     public class NotebooksController : ControllerBase
     {

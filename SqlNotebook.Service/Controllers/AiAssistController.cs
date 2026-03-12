@@ -7,6 +7,7 @@ using AutoMapper;
 using DAP.SqlNotebook.BL.DataAccess;
 using DAP.SqlNotebook.BL.DataAccess.Entities;
 using DAP.SqlNotebook.BL.Services.AiSql;
+using DAP.SqlNotebook.Contract;
 using DAP.SqlNotebook.Contract.Entities;
 using DAP.SqlNotebook.Service.Helpers;
 using Microsoft.AspNetCore.Mvc;
@@ -14,7 +15,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace DAP.SqlNotebook.Service.Controllers
 {
     [ApiController]
-    [Route("api/v1/ai/assist")]
+    [Route(ApiRoutes.AiAssist)]
     public class AiAssistController : ControllerBase
     {
         private readonly IAiAssistMessageRepository _messages;

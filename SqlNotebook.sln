@@ -457,6 +457,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Common", "Common", "{CF58CD
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlNotebook.BL.Tests", "SqlNotebook.BL.Tests\SqlNotebook.BL.Tests.csproj", "{96E8D598-3A5A-4BF3-B2FE-43F6EF7E6DF4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlNotebook.Service.IntegrationTests", "SqlNotebook.Service.IntegrationTests\SqlNotebook.Service.IntegrationTests.csproj", "{2C4BFBF7-FC4E-49CC-81A2-496348BEB070}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -503,6 +505,10 @@ Global
 		{96E8D598-3A5A-4BF3-B2FE-43F6EF7E6DF4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{96E8D598-3A5A-4BF3-B2FE-43F6EF7E6DF4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{96E8D598-3A5A-4BF3-B2FE-43F6EF7E6DF4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2C4BFBF7-FC4E-49CC-81A2-496348BEB070}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2C4BFBF7-FC4E-49CC-81A2-496348BEB070}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2C4BFBF7-FC4E-49CC-81A2-496348BEB070}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2C4BFBF7-FC4E-49CC-81A2-496348BEB070}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

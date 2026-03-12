@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using DAP.SqlNotebook.BL.Services.Notebook;
+using DAP.SqlNotebook.Contract;
 using DAP.SqlNotebook.Contract.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -13,7 +14,7 @@ namespace DAP.SqlNotebook.Service.Controllers
     /// API for Excalidraw diagram storage. Diagrams are stored in notebook cells of type Excalidraw.
     /// </summary>
     [ApiController]
-    [Route("api/v1/notebooks/{notebookId:guid}/excalidraw")]
+    [Route(ApiRoutes.Excalidraw)]
     [Authorize]
     public class ExcalidrawController : ControllerBase
     {
@@ -67,8 +68,5 @@ namespace DAP.SqlNotebook.Service.Controllers
         }
     }
 
-    public class ExcalidrawContentRequest
-    {
-        public string? Content { get; set; }
-    }
+   
 }

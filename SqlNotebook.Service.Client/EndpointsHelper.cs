@@ -18,6 +18,15 @@ namespace DAP.SqlNotebook.Service.Client
             => sessionId.HasValue ? $"{AiAssist}/messages?sessionId={sessionId.Value:N}" : $"{AiAssist}/messages";
         public static string AiAssistSend() => $"{AiAssist}/send";
         public static string AiSqlSuggestChart() => $"{AiSql}/suggest-chart";
+        public static string AiSqlGenerate() => AiSql;
+        public static string AiSqlFindTables() => $"{AiSql}/find-tables";
+
+        public static string Schema(Guid? catalogNodeId = null)
+            => catalogNodeId.HasValue && catalogNodeId.Value != Guid.Empty
+                ? "api/v1/schema?catalogNodeId=" + catalogNodeId.Value.ToString("N")
+                : "api/v1/schema";
+
+        public static string SchemaAutocomplete() => "api/v1/schema/autocomplete";
 
         public static string CatalogNodes(Guid? parentId = null)
             => parentId.HasValue ? $"{Catalog}/nodes?parentId={parentId.Value:N}" : $"{Catalog}/nodes";

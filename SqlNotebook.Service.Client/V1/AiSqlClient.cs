@@ -21,4 +21,20 @@ public class AiSqlClient : IAiSqlClient
             return null;
         return await response.CdpReadContentAsAsync<SuggestChartResponseInfo>(ct);
     }
+
+    public async Task<AiSqlResponseInfo?> GenerateAsync(AiSqlRequestInfo request, CancellationToken ct)
+    {
+        using var response = await _httpClient.PostAsJsonAsync(EndpointsHelper.AiSqlGenerate(), request, ct);
+        if (!response.IsSuccessStatusCode)
+            return null;
+        return await response.CdpReadContentAsAsync<AiSqlResponseInfo>(ct);
+    }
+
+    public async Task<FindTablesResponseInfo?> FindTablesAsync(FindTablesRequestInfo request, CancellationToken ct)
+    {
+        using var response = await _httpClient.PostAsJsonAsync(EndpointsHelper.AiSqlFindTables(), request, ct);
+        if (!response.IsSuccessStatusCode)
+            return null;
+        return await response.CdpReadContentAsAsync<FindTablesResponseInfo>(ct);
+    }
 }

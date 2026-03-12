@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using DAP.SqlNotebook.BL.DataAccess;
+using DAP.SqlNotebook.Contract;
 using DAP.SqlNotebook.Contract.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,7 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace DAP.SqlNotebook.Service.Controllers;
 
 [ApiController]
-[Route("api/v1/favorites")]
+[Route(ApiRoutes.Favorites)]
 [Authorize]
 public class FavoritesController : ControllerBase
 {

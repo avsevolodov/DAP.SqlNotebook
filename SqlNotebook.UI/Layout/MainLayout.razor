@@ -57,12 +57,15 @@
                            Variant="@(_leftPanelActive == "Schema" ? Variant.Filled : Variant.Text)"
                            OnClick="OpenSchemaPanel"
                            Class="layout-panel-icon" />
-            <MudIconButton Icon="@Icons.Material.Filled.List"
-                           Title="Table of contents"
-                           Color="@(_leftPanelActive == "Toc" ? Color.Primary : Color.Default)"
-                           Variant="@(_leftPanelActive == "Toc" ? Variant.Filled : Variant.Text)"
-                           OnClick="OpenTocPanel"
-                           Class="layout-panel-icon" />
+            @if (_hasNotebook)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.List"
+                               Title="Table of contents"
+                               Color="@(_leftPanelActive == "Toc" ? Color.Primary : Color.Default)"
+                               Variant="@(_leftPanelActive == "Toc" ? Variant.Filled : Variant.Text)"
+                               OnClick="OpenTocPanel"
+                               Class="layout-panel-icon" />
+            }
         </div>
         @if (_leftPanelActive == "Workspaces")
         {
@@ -88,7 +91,7 @@
             </MudPaper>
             <div class="layout-resizer layout-resizer-left" @onmousedown='@(e => StartResize(e, "leftSchema"))' title="Resize width"></div>
         }
-        else if (_leftPanelActive == "Toc")
+        else if (_leftPanelActive == "Toc" && _hasNotebook)
         {
             <MudPaper Class="pa-0 layout-panel-left layout-panel-toc" Style="@($"width:{_tocPanelWidth}px; min-width:180px; max-width:420px; border-right: 1px solid rgba(0,0,0,0.12); overflow:auto; flex-shrink:0;")">
                 <div class="layout-panel-header">
@@ -119,6 +122,7 @@
 
 @code {
     [Inject] private IJSRuntime JS { get; set; } = null!;
+    [Inject] private DAP.SqlNotebook.UI.ICurrentNotebookContext CurrentNotebookContext { get; set; } = null!;
 
     private static readonly MudTheme _greenTheme = new()
     {
@@ -151,6 +155,7 @@
     private const string StorageKeyRight = "sqlnotebook:layout:rightWidth";
     private const string StorageKeyLeftPanel = "sqlnotebook:layout:leftPanel";
     private const string StorageKeyRightVisible = "sqlnotebook:layout:rightVisible";
+    private bool _hasNotebook;
 
     protected override async Task OnInitializedAsync()
     {
@@ -176,6 +181,9 @@
             var rightVisible = await JS.InvokeAsync<string>("localStorage.getItem", StorageKeyRightVisible);
             if (!string.IsNullOrEmpty(rightVisible))
                 _rightPanelVisible = string.Equals(rightVisible, "true", StringComparison.OrdinalIgnoreCase) || rightVisible == "1";
+
+            _hasNotebook = CurrentNotebookContext.NotebookId.HasValue;
+            CurrentNotebookContext.NotebookIdChanged += OnNotebookIdChanged;
         }
         catch { /* ignore */ }
     }
@@ -189,6 +197,7 @@
     public void Dispose()
     {
         _dotNetRef?.Dispose();
+        CurrentNotebookContext.NotebookIdChanged -= OnNotebookIdChanged;
     }
 
     private void ToggleRightPanel()
@@ -282,5 +291,15 @@
             await JS.InvokeVoidAsync("localStorage.setItem", StorageKeyRightVisible, _rightPanelVisible ? "true" : "false");
         }
         catch { }
+    }
+
+    private void OnNotebookIdChanged()
+    {
+        _hasNotebook = CurrentNotebookContext.NotebookId.HasValue;
+        if (!_hasNotebook && _leftPanelActive == "Toc")
+        {
+            _leftPanelActive = null;
+        }
+        InvokeAsync(StateHasChanged);
     }
 }
